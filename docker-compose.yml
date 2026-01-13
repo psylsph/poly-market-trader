@@ -1,0 +1,18 @@
+services:
+  poly-market-trader:
+    build: .
+    container_name: poly-market-trader
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - POLY_TRADER_INITIAL_BALANCE=10000
+      - POLY_TRADER_DATA_DIR=/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

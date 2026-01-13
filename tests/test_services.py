@@ -1,0 +1,426 @@
+import unittest
+from unittest.mock import patch, MagicMock, Mock
+from decimal import Decimal
+from datetime import datetime
+from poly_market_trader.services.order_executor import OrderExecutor
+from poly_market_trader.services.paper_trader import PaperTrader
+from poly_market_trader.services.market_monitor import MarketMonitor
+from poly_market_trader.models.portfolio import Portfolio
+from poly_market_trader.models.trade import Trade, Position, TradeType, MarketDirection
+
+
+class TestOrderExecutor(unittest.TestCase):
+    """Test cases for the OrderExecutor class"""
+    
+    def setUp(self):
+        """Set up test fixtures before each test method."""
+        self.portfolio = Portfolio(initial_balance=Decimal('1000.00'))
+        self.executor = OrderExecutor(self.portfolio)
+    
+    def test_execute_buy_trade_success(self):
+        """Test executing a successful buy trade."""
+        # Verify initial state
+        initial_balance = self.portfolio.current_balance
+        
+        # Execute a buy trade
+        trade = self.executor.execute_trade(
+            market_id="test_market",
+            outcome=MarketDirection.YES,
+            quantity=10.0,
+            price=0.5,
+            trade_type=TradeType.BUY
+        )
+        
+        # Verify the trade was created
+        self.assertIsNotNone(trade)
+        self.assertEqual(trade.market_id, "test_market")
+        self.assertEqual(trade.outcome, MarketDirection.YES)
+        self.assertEqual(trade.quantity, 10.0)
+        self.assertEqual(trade.price, 0.5)
+        self.assertEqual(trade.trade_type, TradeType.BUY)
+        
+        # Verify balance was reduced
+        expected_balance = initial_balance - Decimal(str(10.0 * 0.5))
+        self.assertEqual(self.portfolio.current_balance, expected_balance)
+        
+        # Verify position was created
+        position = self.portfolio.get_position("test_market", "YES")
+        self.assertIsNotNone(position)
+        self.assertEqual(position.quantity, 10.0)
+        self.assertEqual(position.avg_price, 0.5)
+        
+        # Verify trade was added to history
+        self.assertEqual(len(self.portfolio.trade_history), 1)
+    
+    def test_execute_buy_trade_insufficient_funds(self):
+        """Test executing a buy trade with insufficient funds."""
+        # Try to buy more than available balance
+        trade = self.executor.execute_trade(
+            market_id="test_market",
+            outcome=MarketDirection.YES,
+            quantity=10000.0,  # Way more than balance
+            price=1.0,
+            trade_type=TradeType.BUY
+        )
+        
+        # Verify the trade failed
+        self.assertIsNone(trade)
+        
+        # Verify no position was created
+        position = self.portfolio.get_position("test_market", "YES")
+        self.assertIsNone(position)
+    
+    def test_execute_sell_trade_success(self):
+        """Test executing a successful sell trade."""
+        # First, create a position by buying
+        buy_trade = self.executor.execute_trade(
+            market_id="test_market",
+            outcome=MarketDirection.YES,
+            quantity=10.0,
+            price=0.5,
+            trade_type=TradeType.BUY
+        )
+        
+        # Verify the position exists
+        position = self.portfolio.get_position("test_market", "YES")
+        self.assertIsNotNone(position)
+        self.assertEqual(position.quantity, 10.0)
+        
+        initial_balance = self.portfolio.current_balance
+        
+        # Now sell some of it
+        sell_trade = self.executor.execute_trade(
+            market_id="test_market",
+            outcome=MarketDirection.YES,
+            quantity=5.0,
+            price=0.6,
+            trade_type=TradeType.SELL
+        )
+        
+        # Verify the sell trade was created
+        self.assertIsNotNone(sell_trade)
+        self.assertEqual(sell_trade.trade_type, TradeType.SELL)
+        
+        # Verify balance was increased
+        expected_balance_increase = Decimal(str(5.0 * 0.6))
+        expected_balance = initial_balance + expected_balance_increase
+        self.assertEqual(self.portfolio.current_balance, expected_balance)
+        
+        # Verify position quantity was reduced
+        position_after_sell = self.portfolio.get_position("test_market", "YES")
+        self.assertEqual(position_after_sell.quantity, 5.0)  # 10 - 5 = 5
+    
+    def test_execute_sell_trade_insufficient_quantity(self):
+        """Test executing a sell trade with insufficient quantity."""
+        # Try to sell without having a position
+        trade = self.executor.execute_trade(
+            market_id="test_market",
+            outcome=MarketDirection.YES,
+            quantity=10.0,
+            price=0.5,
+            trade_type=TradeType.SELL
+        )
+        
+        # Verify the trade failed
+        self.assertIsNone(trade)
+    
+    def test_place_buy_order(self):
+        """Test placing a buy order."""
+        with patch.object(self.executor, 'execute_trade') as mock_execute:
+            mock_execute.return_value = MagicMock(spec=Trade)
+            
+            result = self.executor.place_buy_order(
+                market_id="test_market",
+                outcome=MarketDirection.YES,
+                quantity=10.0,
+                max_price=0.5
+            )
+            
+            # Verify execute_trade was called with correct parameters
+            mock_execute.assert_called_once_with(
+                "test_market",
+                MarketDirection.YES,
+                10.0,
+                0.5,
+                TradeType.BUY
+            )
+            
+            self.assertIsNotNone(result)
+    
+    def test_place_sell_order(self):
+        """Test placing a sell order."""
+        with patch.object(self.executor, 'execute_trade') as mock_execute:
+            mock_execute.return_value = MagicMock(spec=Trade)
+            
+            result = self.executor.place_sell_order(
+                market_id="test_market",
+                outcome=MarketDirection.YES,
+                quantity=10.0,
+                min_price=0.5
+            )
+            
+            # Verify execute_trade was called with correct parameters
+            mock_execute.assert_called_once_with(
+                "test_market",
+                MarketDirection.YES,
+                10.0,
+                0.5,
+                TradeType.SELL
+            )
+            
+            self.assertIsNotNone(result)
+
+
+class TestPaperTrader(unittest.TestCase):
+    """Test cases for the PaperTrader class"""
+    
+    def setUp(self):
+        """Set up test fixtures before each test method."""
+        self.trader = PaperTrader(initial_balance=Decimal('1000.00'), auto_load=False)
+    
+    def test_initialization(self):
+        """Test that PaperTrader initializes correctly."""
+        self.assertEqual(self.trader.portfolio.initial_balance, Decimal('1000.00'))
+        self.assertIsNotNone(self.trader.market_data)
+        self.assertIsNotNone(self.trader.chainlink_data)
+        self.assertIsNotNone(self.trader.order_executor)
+        self.assertIsNotNone(self.trader.market_monitor)
+    
+    @patch.object(PaperTrader, 'get_crypto_markets')
+    def test_place_crypto_bet_market_found(self, mock_get_markets):
+        """Test placing a crypto bet when market is found."""
+        # Mock the market search
+        mock_get_markets.return_value = [
+            {"id": "test_market", "question": "Will Bitcoin reach $100k?"}
+        ]
+        
+        # Mock the order executor
+        with patch.object(self.trader.order_executor, 'place_buy_order') as mock_place_order:
+            mock_place_order.return_value = MagicMock(spec=Trade)
+            
+            result = self.trader.place_crypto_bet(
+                market_title_keyword="bitcoin",
+                outcome=MarketDirection.YES,
+                amount=100.0,
+                max_price=0.5
+            )
+            
+            # Verify the order was placed
+            self.assertTrue(result)
+            mock_place_order.assert_called_once()
+    
+    @patch.object(PaperTrader, 'get_crypto_markets')
+    def test_place_crypto_bet_market_not_found(self, mock_get_markets):
+        """Test placing a crypto bet when market is not found."""
+        # Mock the market search to return empty list
+        mock_get_markets.return_value = []
+        
+        result = self.trader.place_crypto_bet(
+            market_title_keyword="nonexistent",
+            outcome=MarketDirection.YES,
+            amount=100.0,
+            max_price=0.5
+        )
+        
+        # Verify the bet was not placed
+        self.assertFalse(result)
+    
+    def test_extract_crypto_name_from_question(self):
+        """Test extracting crypto name from market question."""
+        # Test various crypto names
+        test_cases = [
+            ("Will Bitcoin reach $100k?", "bitcoin"),
+            ("Ethereum price prediction", "ethereum"),
+            ("What about BTC today?", "bitcoin"),
+            ("ETH market analysis", "ethereum"),
+            ("Solana network update", "solana"),
+            ("Random question", "")
+        ]
+        
+        for question, expected in test_cases:
+            with self.subTest(question=question):
+                result = self.trader._extract_crypto_name_from_question(question)
+                self.assertEqual(result, expected)
+    
+    @patch.object(PaperTrader, 'get_chainlink_analysis')
+    @patch.object(PaperTrader, 'get_crypto_markets')
+    def test_place_informed_crypto_bet_bullish(self, mock_get_markets, mock_get_analysis):
+        """Test placing an informed crypto bet with bullish trend."""
+        # Mock the market search
+        mock_get_markets.return_value = [
+            {"id": "test_market", "question": "Will Bitcoin reach $100k?"}
+        ]
+        
+        # Mock the Chainlink analysis
+        mock_get_analysis.return_value = {
+            'current_price': 50000.0,
+            'trend': 'bullish',
+            'indicators': {'current_price': 50000.0, 'sma': 45000.0}
+        }
+        
+        # Mock the order executor
+        with patch.object(self.trader.order_executor, 'place_buy_order') as mock_place_order:
+            mock_place_order.return_value = MagicMock(spec=Trade)
+            
+            result = self.trader.place_informed_crypto_bet(
+                market_title_keyword="bitcoin",
+                amount=100.0,
+                max_price=0.7,
+                confidence_threshold=0.5
+            )
+            
+            # Verify the order was placed with YES outcome (bullish)
+            self.assertTrue(result)
+            mock_place_order.assert_called_once()
+            # Check that the outcome was YES (since trend is bullish)
+            args, kwargs = mock_place_order.call_args
+            # The outcome parameter is the second positional argument (index 1)
+            self.assertEqual(kwargs["outcome"], MarketDirection.YES)  # outcome parameter
+    
+    @patch.object(PaperTrader, 'get_chainlink_analysis')
+    @patch.object(PaperTrader, 'get_crypto_markets')
+    def test_place_informed_crypto_bet_bearish(self, mock_get_markets, mock_get_analysis):
+        """Test placing an informed crypto bet with bearish trend."""
+        # Mock the market search
+        mock_get_markets.return_value = [
+            {"id": "test_market", "question": "Will Bitcoin crash??"}
+        ]
+        
+        # Mock the Chainlink analysis
+        mock_get_analysis.return_value = {
+            'current_price': 50000.0,
+            'trend': 'bearish',
+            'indicators': {'current_price': 50000.0, 'sma': 55000.0}
+        }
+        
+        # Mock the order executor
+        with patch.object(self.trader.order_executor, 'place_buy_order') as mock_place_order:
+            mock_place_order.return_value = MagicMock(spec=Trade)
+            
+            result = self.trader.place_informed_crypto_bet(
+                market_title_keyword="bitcoin",
+                amount=100.0,
+                max_price=0.7,
+                confidence_threshold=0.5
+            )
+            
+            # Verify the order was placed with NO outcome (bearish)
+            self.assertTrue(result)
+            mock_place_order.assert_called_once()
+            # Check that the outcome was NO (since trend is bearish)
+            args, kwargs = mock_place_order.call_args
+            # The outcome parameter is the second positional argument (index 1)
+            self.assertEqual(kwargs["outcome"], MarketDirection.NO)  # outcome parameter
+    
+    @patch.object(PaperTrader, 'get_chainlink_analysis')
+    @patch.object(PaperTrader, 'get_crypto_markets')
+    def test_place_informed_crypto_bet_low_confidence(self, mock_get_markets, mock_get_analysis):
+        """Test placing an informed crypto bet with low confidence."""
+        # Mock the market search
+        mock_get_markets.return_value = [
+            {"id": "test_market", "question": "Will Bitcoin reach $100k?"}
+        ]
+        
+        # Mock the Chainlink analysis with neutral trend (low confidence)
+        mock_get_analysis.return_value = {
+            'current_price': 50000.0,
+            'trend': 'neutral',
+            'indicators': {'current_price': 50000.0, 'sma': 50000.0}
+        }
+        
+        result = self.trader.place_informed_crypto_bet(
+            market_title_keyword="bitcoin",
+            amount=100.0,
+            max_price=0.7,
+            confidence_threshold=0.6  # Higher than the neutral confidence of 0.4
+        )
+        
+        # Verify the bet was not placed due to low confidence
+        self.assertFalse(result)
+    
+    def test_get_portfolio_summary(self):
+        """Test getting portfolio summary."""
+        # Add a position to the portfolio
+        position = Position(
+            market_id="test_market",
+            outcome=MarketDirection.YES,
+            quantity=10.0,
+            avg_price=0.5
+        )
+        self.trader.portfolio.add_position(position)
+        
+        # Mock market prices for the position
+        with patch.object(self.trader, 'get_market_prices') as mock_get_prices:
+            mock_get_prices.return_value = {"yes": {"price": 0.6}, "no": {"price": 0.4}}
+            
+            summary = self.trader.get_portfolio_summary()
+            
+            # Verify the summary structure
+            self.assertIn('current_balance', summary)
+            self.assertIn('total_value', summary)
+            self.assertIn('pnl', summary)
+            self.assertIn('positions_count', summary)
+            self.assertIn('trade_count', summary)
+            
+            # Verify values
+            self.assertEqual(summary['positions_count'], 1)
+            self.assertEqual(summary['trade_count'], 0)  # No trades yet
+
+
+class TestMarketMonitor(unittest.TestCase):
+    """Test cases for the MarketMonitor class"""
+    
+    def setUp(self):
+        """Set up test fixtures before each test method."""
+        self.portfolio = Portfolio(initial_balance=Decimal('1000.00'))
+        self.market_data = Mock()
+        self.chainlink_data = Mock()
+        self.order_executor = Mock()
+        self.monitor = MarketMonitor(
+            portfolio=self.portfolio,
+            market_data=self.market_data,
+            chainlink_data=self.chainlink_data,
+            order_executor=self.order_executor
+        )
+    
+    def test_initialization(self):
+        """Test that MarketMonitor initializes correctly."""
+        self.assertEqual(self.monitor.portfolio, self.portfolio)
+        self.assertEqual(self.monitor.market_data, self.market_data)
+        self.assertEqual(self.monitor.chainlink_data, self.chainlink_data)
+        self.assertEqual(self.monitor.order_executor, self.order_executor)
+        self.assertFalse(self.monitor.is_monitoring)
+        self.assertEqual(self.monitor.check_interval, 900)  # Default 15 minutes
+        self.assertEqual(len(self.monitor.active_bets), 0)
+    
+    def test_extract_crypto_name(self):
+        """Test extracting crypto name from question."""
+        test_cases = [
+            ("Will Bitcoin reach $100k?", "bitcoin"),
+            ("Ethereum price prediction", "ethereum"),
+            ("What about BTC today?", "bitcoin"),
+            ("ETH market analysis", "ethereum"),
+            ("Solana network update", "solana"),
+            ("Random question", "")
+        ]
+        
+        for question, expected in test_cases:
+            with self.subTest(question=question):
+                result = self.monitor._extract_crypto_name(question)
+                self.assertEqual(result, expected)
+    
+    def test_get_monitoring_status(self):
+        """Test getting monitoring status."""
+        status = self.monitor.get_monitoring_status()
+        
+        self.assertIn('is_monitoring', status)
+        self.assertIn('active_bets_count', status)
+        self.assertIn('check_interval', status)
+        
+        self.assertFalse(status['is_monitoring'])
+        self.assertEqual(status['active_bets_count'], 0)
+        self.assertEqual(status['check_interval'], 900)
+
+
+if __name__ == '__main__':
+    unittest.main()

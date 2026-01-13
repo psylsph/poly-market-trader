@@ -1,0 +1,708 @@
+test_get_chainlink_analysis_15min_timeframe (test_15min_analysis.Test15MinuteAnalysis.test_get_chainlink_analysis_15min_timeframe)
+Test that get_chainlink_analysis works with 15min timeframe. ... ok
+test_get_chainlink_analysis_other_timeframe (test_15min_analysis.Test15MinuteAnalysis.test_get_chainlink_analysis_other_timeframe)
+Test that get_chainlink_analysis works with other timeframes. ... ok
+test_get_recent_trend_15min_bearish (test_15min_analysis.Test15MinuteAnalysis.test_get_recent_trend_15min_bearish)
+Test get_recent_trend_15min with bearish trend. ... ok
+test_get_recent_trend_15min_bullish (test_15min_analysis.Test15MinuteAnalysis.test_get_recent_trend_15min_bullish)
+Test get_recent_trend_15min with bullish trend. ... ok
+test_get_recent_trend_15min_neutral (test_15min_analysis.Test15MinuteAnalysis.test_get_recent_trend_15min_neutral)
+Test get_recent_trend_15min with neutral trend. ... ok
+test_get_volatility_15min_calculation (test_15min_analysis.Test15MinuteAnalysis.test_get_volatility_15min_calculation)
+Test get_volatility_15min calculation. ... ok
+test_get_volatility_15min_no_data (test_15min_analysis.Test15MinuteAnalysis.test_get_volatility_15min_no_data)
+Test get_volatility_15min with no historical data. ... ok
+test_get_volatility_15min_single_data_point (test_15min_analysis.Test15MinuteAnalysis.test_get_volatility_15min_single_data_point)
+Test get_volatility_15min with only one data point. ... ok
+test_get_chainlink_analysis_defaults_to_15min (test_15min_analysis.Test15MinuteBetting.test_get_chainlink_analysis_defaults_to_15min)
+Test that get_chainlink_analysis defaults to 15min when no timeframe specified. ... ok
+test_place_crypto_bet_with_15min_analysis (test_15min_analysis.Test15MinuteBetting.test_place_crypto_bet_with_15min_analysis)
+Test placing a crypto bet with 15-minute analysis. ... ok
+test_place_informed_crypto_bet_with_15min_analysis (test_15min_analysis.Test15MinuteBetting.test_place_informed_crypto_bet_with_15min_analysis)
+Test placing an informed crypto bet with 15-minute analysis. ... ok
+test_get_chainlink_feed_address (test_api.TestChainlinkDataProvider.test_get_chainlink_feed_address)
+Test getting Chainlink feed addresses. ... skipped 'Legacy Chainlink method not implemented for Binance API'
+test_get_crypto_trend (test_api.TestChainlinkDataProvider.test_get_crypto_trend)
+Test getting crypto trend (this method relies on get_historical_prices). ... skipped 'Uses mocked/legacy API behavior'
+test_get_current_price_not_found (test_api.TestChainlinkDataProvider.test_get_current_price_not_found)
+Test getting current price for a cryptocurrency that doesn't exist. ... ok
+test_get_current_price_success (test_api.TestChainlinkDataProvider.test_get_current_price_success)
+Test getting current price for a cryptocurrency. ... FAIL
+test_get_historical_prices (test_api.TestChainlinkDataProvider.test_get_historical_prices)
+Test getting historical prices. ... FAIL
+test_get_multiple_prices (test_api.TestChainlinkDataProvider.test_get_multiple_prices)
+Test getting prices for multiple cryptocurrencies. ... FAIL
+test_get_technical_indicators (test_api.TestChainlinkDataProvider.test_get_technical_indicators)
+Test getting technical indicators. ... skipped 'Uses mocked/legacy API behavior'
+test_get_crypto_markets (test_api.TestMarketDataProvider.test_get_crypto_markets)
+Test getting crypto-related markets. ... ok
+test_get_current_price (test_api.TestMarketDataProvider.test_get_current_price)
+Test getting current price for a token. ... ok
+test_get_market_by_id_success (test_api.TestMarketDataProvider.test_get_market_by_id_success)
+Test getting a specific market by ID. ... ok
+test_get_market_prices (test_api.TestMarketDataProvider.test_get_market_prices)
+Test getting market prices. ... ok
+test_get_markets_success (test_api.TestMarketDataProvider.test_get_markets_success)
+Test getting markets successfully. ... ok
+test_get_order_book (test_api.TestMarketDataProvider.test_get_order_book)
+Test getting order book for a token. ... ok
+test_place_informed_crypto_bet_bearish_confidence_high (test_autobetting_monitoring.TestAutoBettingFeatures.test_place_informed_crypto_bet_bearish_confidence_high)
+Test placing an informed crypto bet with high confidence bearish trend. ... ok
+test_place_informed_crypto_bet_bullish_confidence_high (test_autobetting_monitoring.TestAutoBettingFeatures.test_place_informed_crypto_bet_bullish_confidence_high)
+Test placing an informed crypto bet with high confidence bullish trend. ... ok
+test_place_informed_crypto_bet_low_confidence_skip (test_autobetting_monitoring.TestAutoBettingFeatures.test_place_informed_crypto_bet_low_confidence_skip)
+Test that low confidence bets are skipped. ... ok
+test_analyze_and_bet_bearish_trend (test_autobetting_monitoring.TestMarketMonitoring.test_analyze_and_bet_bearish_trend)
+Test the _analyze_and_bet method with bearish trend. ... FAIL
+test_analyze_and_bet_bullish_trend (test_autobetting_monitoring.TestMarketMonitoring.test_analyze_and_bet_bullish_trend)
+Test the _analyze_and_bet method with bullish trend. ... FAIL
+test_analyze_and_bet_neutral_trend_skip (test_autobetting_monitoring.TestMarketMonitoring.test_analyze_and_bet_neutral_trend_skip)
+Test the _analyze_and_bet method with neutral trend (should skip). ... ok
+test_get_active_bets (test_autobetting_monitoring.TestMarketMonitoring.test_get_active_bets)
+Test getting active bets. ... ok
+test_initial_monitoring_state (test_autobetting_monitoring.TestMarketMonitoring.test_initial_monitoring_state)
+Test initial state of the market monitor. ... ok
+test_monitoring_status (test_autobetting_monitoring.TestMarketMonitoring.test_monitoring_status)
+Test getting monitoring status. ... ok
+test_start_stop_monitoring (test_autobetting_monitoring.TestMarketMonitoring.test_start_stop_monitoring)
+Test starting and stopping monitoring. ... ok
+test_get_active_bets_empty (test_autobetting_monitoring.TestPaperTraderMonitoringIntegration.test_get_active_bets_empty)
+Test getting active bets when there are none. ... FAIL
+test_paper_trader_monitoring_methods (test_autobetting_monitoring.TestPaperTraderMonitoringIntegration.test_paper_trader_monitoring_methods)
+Test that PaperTrader properly exposes monitoring methods. ... ok
+test_start_auto_betting (test_autobetting_monitoring.TestPaperTraderMonitoringIntegration.test_start_auto_betting)
+Test starting auto betting through PaperTrader. ... ok
+test_help_message_contains_expected_options (test_cli.TestArgumentParsing.test_help_message_contains_expected_options)
+Test that help message contains expected options. ... usage: python -m unittest [-h] [--balance BALANCE] [--list-markets]
+                          [--place-bet] [--bet-market BET_MARKET]
+                          [--outcome {YES,NO}] [--amount AMOUNT]
+                          [--max-price MAX_PRICE] [--portfolio] [--positions]
+                          [--analyze ANALYZE] [--auto-bet]
+                          [--start-monitoring] [--live-monitor]
+                          [--stop-monitoring] [--dashboard]
+                          [--reset-portfolio] [--settle-bets] [--bet-history]
+                          [--history-limit HISTORY_LIMIT]
+                          [--history-filter {won,lost}] [--monitor-status]
+                          [--active-bets]
+                          [--confidence-threshold CONFIDENCE_THRESHOLD]
+                          [--web] [--web-port WEB_PORT]
+python -m unittest: error: unrecognized arguments: discover -s tests -v
+ERROR
+test_auto_bet_command (test_cli.TestAutoBetCommand.test_auto_bet_command)
+Test the --auto-bet command. ... FAIL
+test_active_bets_command (test_cli.TestCommandLineInterface.test_active_bets_command)
+Test the --active-bets command. ... ok
+test_analyze_command (test_cli.TestCommandLineInterface.test_analyze_command)
+Test the --analyze command. ... ok
+test_custom_balance_command (test_cli.TestCommandLineInterface.test_custom_balance_command)
+Test the --balance command with custom value. ... FAIL
+test_list_markets_command (test_cli.TestCommandLineInterface.test_list_markets_command)
+Test the --list-markets command. ... ok
+test_monitor_status_command (test_cli.TestCommandLineInterface.test_monitor_status_command)
+Test the --monitor-status command. ... FAIL
+test_portfolio_command (test_cli.TestCommandLineInterface.test_portfolio_command)
+Test the --portfolio command. ... FAIL
+test_positions_command (test_cli.TestCommandLineInterface.test_positions_command)
+Test the --positions command. ... ok
+test_complete_paper_trading_session (test_integration.TestEndToEnd.test_complete_paper_trading_session)
+Test a complete paper trading session from start to finish. ... ok
+test_chainlink_integration (test_integration.TestIntegration.test_chainlink_integration)
+Test integration between paper trader and Chainlink data. ... ok
+test_full_trading_flow (test_integration.TestIntegration.test_full_trading_flow)
+Test the full trading flow from market discovery to position creation. ... Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Found market: Will Bitcoin reach $100k?... (ID: test_mar...)
+Analyzing Chainlink data for bitcoin (timeframe: 15min)...
+Current Bitcoin price: $50000.00
+Current Bitcoin price: $50000.00
+Bitcoin trend (15min): bullish
+15-min Volatility: 2.50%
+Chainlink data supports a bullish outlook (15min), reinforcing YES bet
+📝 Bet tracked: 6edf3733... | YES | Cost: $500.00
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Found market: Will Ethereum hit $5k?... (ID: test_mar...)
+Analyzing Chainlink data for ethereum (timeframe: 15min)...
+Current Ethereum price: $4000.00
+Ethereum trend (15min): bullish
+15-min Volatility: 3.00%
+Placing YES bet with 0.70 confidence
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Error fetching historical prices from Binance for bitcoin: unsupported operand type(s) for /: 'str' and 'int'
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Found market: Will Bitcoin crash?... (ID: test_mar...)
+Analyzing Chainlink data for bitcoin (timeframe: 15min)...
+Current Bitcoin price: $50000.00
+Bitcoin trend (15min): bearish
+15-min Volatility: 3.00%
+Placing NO bet with 0.70 confidence
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Found market: Will Bitcoin reach $100k?... (ID: test_mar...)
+Analyzing Chainlink data for bitcoin (timeframe: 15min)...
+Current Bitcoin price: $50000.00
+Bitcoin trend (15min): bullish
+15-min Volatility: 3.00%
+Placing YES bet with 0.70 confidence
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Found market: Will Bitcoin stay stable?... (ID: test_mar...)
+Analyzing Chainlink data for bitcoin (timeframe: 15min)...
+Current Bitcoin price: $50000.00
+Bitcoin trend (15min): neutral
+15-min Volatility: 0.50%
+Confidence (0.40) below threshold (0.8), skipping bet
+Analyzing market: Will Ethereum crash?... for ethereum
+  Current price: $4000.00, Trend: bearish, Volatility: 2.50%
+  Placing 0.7 confidence bet: YES on Will Ethereum crash?...
+Error analyzing market test_market_456: 'NoneType' object has no attribute 'add_active_bet'
+Analyzing market: Will Bitcoin reach $100k?... for bitcoin
+  Current price: $50000.00, Trend: bullish, Volatility: 2.50%
+  Placing 0.7 confidence bet: NO on Will Bitcoin reach $100k?...
+Error analyzing market test_market_123: 'NoneType' object has no attribute 'add_active_bet'
+Analyzing market: Will Bitcoin stay stable?... for bitcoin
+  Current price: $50000.00, Trend: neutral, Volatility: 0.50%
+
+======================================================================
+[18:53:50] 🔄 MONITORING CYCLE STARTED
+======================================================================
+
+📋 ACTIVE BETS: None
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 🔍 SCANNING FOR NEW BETTING OPPORTUNITIES                │
+└─────────────────────────────────────────────────────────────────────────┘
+
+Error in monitoring loop: object of type 'Mock' has no len()
+Started market monitoring. Checking every 300 seconds.
+Stopped market monitoring.
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+
+======================================================================
+[18:53:52] 🔄 MONITORING CYCLE STARTED
+======================================================================
+
+📋 ACTIVE BETS: None
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 🔍 SCANNING FOR NEW BETTING OPPORTUNITIES                │
+└─────────────────────────────────────────────────────────────────────────┘
+
+Started market monitoring. Checking every 180 seconds.
+📊 Found 20 15M crypto markets
+🎯 Analyzing top 5 markets...
+
+Analyzing market: Bitcoin Up or Down - January 13, 1PM ET... for bitcoin
+  Current price: $93612.00, Trend: neutral, Volatility: 0.04%
+Analyzing market: Ethereum Up or Down - January 13, 1PM ET... for ethereum
+Stopped market monitoring.
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Refreshing crypto markets...
+
+=== Available Crypto Markets (showing first 2) ===
+1. Bitcoin Up or Down - January 13, 1PM ET
+    ID: 1160996... | YES Price: N/A | NO Price: N/A
+2. Ethereum Up or Down - January 13, 1PM ET
+    ID: 1160997... | YES Price: N/A | NO Price: N/A
+==================================================
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+  Current price: $3203.27, Trend: bullish, Volatility: 0.05%
+  Placing 0.6 confidence bet: NO on Ethereum Up or Down - January ...
+Executed BUY order: 714.2857142857143 shares of NO in market 1160997... at $0.70 each. Total: $500.00
+💾 Portfolio saved to data/portfolio.json
+📝 Bet tracked: 91e3503a... | NO | Cost: $500.00
+  Bet placed successfully! Quantity: 714.29 at $0.70
+Analyzing market: Solana Up or Down - January 13, 1PM ET... for solana
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Found market: Will Bitcoin reach $100k by end of year?... (ID: test_mar...)
+Analyzing Chainlink data for bitcoin (timeframe: 15min)...
+  Current price: $143.32, Trend: neutral, Volatility: 0.06%
+Analyzing market: XRP Up or Down - January 13, 1PM ET... for ripple
+Current Bitcoin price: $93586.83
+Current Bitcoin price: $93586.83
+Bitcoin trend (15min): bullish
+15-min Volatility: 0.15%
+Chainlink data supports a bullish outlook (15min), reinforcing YES bet
+Executed BUY order: 833.3333333333334 shares of YES in market test_mar... at $0.60 each. Total: $500.00ok
+test_informed_betting_flow (test_integration.TestIntegration.test_informed_betting_flow)
+Test the full flow of informed betting based on Chainlink analysis. ... ok
+test_multiple_positions_tracking (test_integration.TestIntegration.test_multiple_positions_tracking)
+Test tracking multiple positions. ... ok
+test_portfolio_pnl_calculation (test_integration.TestIntegration.test_portfolio_pnl_calculation)
+Test that P&L is calculated correctly. ... ok
+test_portfolio_value_calculation (test_integration.TestIntegration.test_portfolio_value_calculation)
+Test that portfolio value is calculated correctly with positions. ... ok
+test_add_position (test_models.TestPortfolioModel.test_add_position)
+Test adding a position to the portfolio. ... ok
+test_get_pnl_no_positions (test_models.TestPortfolioModel.test_get_pnl_no_positions)
+Test getting P&L when there are no positions. ... ok
+test_get_pnl_with_positions (test_models.TestPortfolioModel.test_get_pnl_with_positions)
+Test getting P&L when there are positions. ... ok
+test_get_position_found (test_models.TestPortfolioModel.test_get_position_found)
+Test getting an existing position. ... ok
+test_get_position_not_found (test_models.TestPortfolioModel.test_get_position_not_found)
+Test getting a non-existing position. ... ok
+test_get_total_value_no_positions (test_models.TestPortfolioModel.test_get_total_value_no_positions)
+Test getting total value when there are no positions. ... ok
+test_get_total_value_with_positions (test_models.TestPortfolioModel.test_get_total_value_with_positions)
+Test getting total value when there are positions. ... ok
+test_portfolio_initialization (test_models.TestPortfolioModel.test_portfolio_initialization)
+Test that portfolio is initialized with correct attributes. ... ok
+test_portfolio_with_custom_initial_balance (test_models.TestPortfolioModel.test_portfolio_with_custom_initial_balance)
+Test that portfolio can be initialized with custom balance. ... ok
+test_remove_position (test_models.TestPortfolioModel.test_remove_position)
+Test removing a position from the portfolio. ... ok
+test_update_balance_negative (test_models.TestPortfolioModel.test_update_balance_negative)
+Test updating balance with a negative amount. ... ok
+test_update_balance_positive (test_models.TestPortfolioModel.test_update_balance_positive)
+Test updating balance with a positive amount. ... ok
+test_position_creation (test_models.TestPositionModel.test_position_creation)
+Test that a position is created with correct attributes. ... ok
+test_position_current_value (test_models.TestPositionModel.test_position_current_value)
+Test that current value is calculated correctly. ... ok
+test_position_pnl (test_models.TestPositionModel.test_position_pnl)
+Test that P&L is calculated correctly. ... ok
+test_trade_creation (test_models.TestTradeModel.test_trade_creation)
+Test that a trade is created with correct attributes. ... ok
+test_trade_fee_default (test_models.TestTradeModel.test_trade_fee_default)
+Test that fee defaults to 0.0. ... ok
+test_trade_total_value (test_models.TestTradeModel.test_trade_total_value)
+Test that total value is calculated correctly. ... ok
+test_extract_crypto_name (test_services.TestMarketMonitor.test_extract_crypto_name)
+Test extracting crypto name from question. ... ok
+test_get_monitoring_status (test_services.TestMarketMonitor.test_get_monitoring_status)
+Test getting monitoring status. ... ok
+test_initialization (test_services.TestMarketMonitor.test_initialization)
+Test that MarketMonitor initializes correctly. ... ok
+test_execute_buy_trade_insufficient_funds (test_services.TestOrderExecutor.test_execute_buy_trade_insufficient_funds)
+Test executing a buy trade with insufficient funds. ... ok
+test_execute_buy_trade_success (test_services.TestOrderExecutor.test_execute_buy_trade_success)
+Test executing a successful buy trade. ... ok
+test_execute_sell_trade_insufficient_quantity (test_services.TestOrderExecutor.test_execute_sell_trade_insufficient_quantity)
+Test executing a sell trade with insufficient quantity. ... ok
+test_execute_sell_trade_success (test_services.TestOrderExecutor.test_execute_sell_trade_success)
+Test executing a successful sell trade. ... ok
+test_place_buy_order (test_services.TestOrderExecutor.test_place_buy_order)
+Test placing a buy order. ... ok
+test_place_sell_order (test_services.TestOrderExecutor.test_place_sell_order)
+Test placing a sell order. ... ok
+test_extract_crypto_name_from_question (test_services.TestPaperTrader.test_extract_crypto_name_from_question)
+Test extracting crypto name from market question. ... ok
+test_get_portfolio_summary (test_services.TestPaperTrader.test_get_portfolio_summary)
+Test getting portfolio summary. ... ok
+test_initialization (test_services.TestPaperTrader.test_initialization)
+Test that PaperTrader initializes correctly. ... ok
+test_place_crypto_bet_market_found (test_services.TestPaperTrader.test_place_crypto_bet_market_found)
+Test placing a crypto bet when market is found. ... ok
+test_place_crypto_bet_market_not_found (test_services.TestPaperTrader.test_place_crypto_bet_market_not_found)
+Test placing a crypto bet when market is not found. ... ok
+test_place_informed_crypto_bet_bearish (test_services.TestPaperTrader.test_place_informed_crypto_bet_bearish)
+Test placing an informed crypto bet with bearish trend. ... ok
+test_place_informed_crypto_bet_bullish (test_services.TestPaperTrader.test_place_informed_crypto_bet_bullish)
+Test placing an informed crypto bet with bullish trend. ... ok
+test_place_informed_crypto_bet_low_confidence (test_services.TestPaperTrader.test_place_informed_crypto_bet_low_confidence)
+Test placing an informed crypto bet with low confidence. ... ok
+test_problem_1_and_4_token_stats_and_win_loss (test_settlement.TestBetSettlement.test_problem_1_and_4_token_stats_and_win_loss)
+PROBLEM 1: Token Performance table - all bets stay in 'pending' ... ok
+test_problem_2_active_bets_not_settling (test_settlement.TestBetSettlement.test_problem_2_active_bets_not_settling)
+PROBLEM 2: Active Bets table - shows 'Settled' status but bets never actually settle ... ok
+test_problem_3_portfolio_value (test_settlement.TestBetSettlement.test_problem_3_portfolio_value)
+PROBLEM 3: Portfolio value going down and down - never recovers when won ... ok
+test_problem_5_win_rate_calculation (test_settlement.TestBetSettlement.test_problem_5_win_rate_calculation)
+PROBLEM 5: Win Rate is not being calculated or displayed ... ok
+test_problem_6_bet_history_empty (test_settlement.TestBetSettlement.test_problem_6_bet_history_empty)
+PROBLEM 6: Bet History table stays empty - no bets ever appear in history ... 
+💾 Portfolio saved to data/portfolio.json
+📝 Bet tracked: 5bab1904... | YES | Cost: $500.00
+
+📍 Active Positions (1):
+============================================================
+  Market ID    Outcome  Quantity     Avg Price   
+------------------------------------------------------------
+  1. test_market_ YES            833.33 $0.60      
+============================================================
+
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Found market: Will Ethereum price increase?... (ID: test_mar...)
+Analyzing Chainlink data for ethereum (timeframe: 15min)...
+  Current price: $2.11, Trend: neutral, Volatility: 0.10%
+Current Ethereum price: $4000.00
+Ethereum trend (15min): bullish
+15-min Volatility: 0.13%
+Placing YES bet with 0.60 confidence
+Executed BUY order: 285.7142857142857 shares of YES in market test_mar... at $0.70 each. Total: $200.00
+💾 Portfolio saved to data/portfolio.json
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Found market: Will Ethereum hit $5k?... (ID: test_mar...)
+Analyzing Chainlink data for ethereum (timeframe: 15min)...
+Analyzing market: XRP Up or Down - January 13, 1:45PM-2:00PM ET... for ripple
+  Current price: $2.11, Trend: neutral, Volatility: 0.10%
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 📊 SCAN COMPLETE                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+
+----------------------------------------------------------------------
+[18:54:01] ⏳ CYCLE COMPLETE. Next check in 180s...
+----------------------------------------------------------------------
+Current Ethereum price: $3202.99
+Current Ethereum price: $3202.99
+Ethereum trend (15min): bullish
+15-min Volatility: 0.13%
+Chainlink data supports a bullish outlook (15min), reinforcing YES bet
+Executed BUY order: 500.0 shares of YES in market test_mar... at $0.60 each. Total: $300.00
+💾 Portfolio saved to data/portfolio.json
+📝 Bet tracked: c61584dc... | YES | Cost: $300.00
+Insufficient balance to buy 10000.0 shares at $1.00. Required: $10000.00, Available: $1000.00
+Executed BUY order: 10.0 shares of YES in market test_mar... at $0.50 each. Total: $5.00
+Cannot sell 10.0 shares. Position: 0 shares available
+Executed BUY order: 10.0 shares of YES in market test_mar... at $0.50 each. Total: $5.00
+Executed SELL order: 5.0 shares of YES in market test_mar... at $0.60 each. Total: $3.00
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Refreshing crypto markets...
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Found market: Will Bitcoin reach $100k?... (ID: test_mar...)
+Analyzing Chainlink data for bitcoin (timeframe: 15min)...
+Current Bitcoin price: $93593.94
+Current Bitcoin price: $93593.94
+Bitcoin trend (15min): bullish
+15-min Volatility: 0.15%
+Chainlink data supports a bullish outlook (15min), reinforcing YES bet
+📝 Bet tracked: 9668cbcf... | YES | Cost: $100.00
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+No crypto market found with keyword: nonexistent
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Found market: Will Bitcoin crash??... (ID: test_mar...)
+Analyzing Chainlink data for bitcoin (timeframe: 15min)...
+Current Bitcoin price: $50000.00
+Bitcoin trend (15min): bearish
+15-min Volatility: 0.00%
+Placing NO bet with 0.60 confidence
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Found market: Will Bitcoin reach $100k?... (ID: test_mar...)
+Analyzing Chainlink data for bitcoin (timeframe: 15min)...
+Current Bitcoin price: $50000.00
+Bitcoin trend (15min): bullish
+15-min Volatility: 0.00%
+Placing YES bet with 0.60 confidence
+Using Binance API (free tier, 1200 requests/minute, no API key required)
+Found market: Will Bitcoin reach $100k?... (ID: test_mar...)
+Analyzing Chainlink data for bitcoin (timeframe: 15min)...
+Current Bitcoin price: $50000.00
+Bitcoin trend (15min): neutral
+15-min Volatility: 0.00%
+Confidence (0.40) below threshold (0.6), skipping bet
+
+=== Testing PROBLEM 1 & 4: Token Stats and Win/Loss ===
+📝 Bet tracked: 4c14b712... | YES | Cost: $50.00
+📝 Bet tracked: 7a3528f0... | YES | Cost: $50.00
+
+🔍 Settling bet: Bitcoin Up or Down - Test...
+   Checking bitcoin prices from 2026-01-13 18:29:03.800595+00:00 to 2026-01-13 18:44:03.800595+00:00...
+   Start price: $50000.00 | End price: $51000.00
+Cannot sell 100.0 shares. Position: 0 shares available
+✅ BET WON! Outcome: YES | Payout: $100.00 | Profit: $50.00
+
+🔍 Settling bet: Ethereum Up or Down - Test...
+   Checking ethereum prices from 2026-01-13 18:29:03.800595+00:00 to 2026-01-13 18:44:03.800595+00:00...
+   Start price: $3000.00 | End price: $2900.00
+Cannot sell 100.0 shares. Position: 0 shares available
+❌ BET LOST! Outcome: NO | Payout: $0.00 | Loss: $-50.00
+Total bets in history: 2
+✅ PROBLEM 1 & 4 FIXED: Tracked 1 win, 1 loss (not pending)
+
+=== Testing PROBLEM 2: Active Bets Not Settling ===
+📝 Bet tracked: 58e1e57b... | NO | Cost: $120.00
+Calling settle_all_ready_bets...
+
+🔍 Settling bet: Ethereum Up or Down - Test...
+   Checking ethereum prices from 2026-01-13 18:29:03.801429+00:00 to 2026-01-13 18:44:03.801429+00:00...
+   Start price: $3000.00 | End price: $2900.00
+Cannot sell 200.0 shares. Position: 0 shares available
+✅ BET WON! Outcome: NO | Payout: $200.00 | Profit: $80.00
+Settled 1 bets
+✅ PROBLEM 2 FIXED: Active bets settle properly
+
+=== Testing PROBLEM 3: Portfolio Value ===
+Initial balance: $10000.00
+Executed BUY order: 100.0 shares of YES in market test_mar... at $0.50 each. Total: $50.00
+Balance after bet: $9950.00
+📝 Bet tracked: 81734611... | YES | Cost: $50.00
+Settling winning bet...
+
+🔍 Settling bet: Solana Up or Down - Test...
+   Checking solana prices from 2026-01-13 18:29:03.802232+00:00 to 2026-01-13 18:44:03.802232+00:00...
+   Start price: $100.00 | End price: $110.00
+Executed SELL order: 100.0 shares of YES in market test_mar... at $1.00 each. Total: $100.00
+✅ BET WON! Outcome: YES | Payout: $100.00 | Profit: $50.00
+Final balance: $10050.00
+✅ PROBLEM 3 FIXED: Portfolio recovered to $10050.00
+
+=== Testing PROBLEM 5: Win Rate Calculation ===
+📝 Bet tracked: 814293b2... | YES | Cost: $50.00
+
+🔍 Settling bet: Test Market 0...
+   Checking bitcoin prices from 2026-01-13 18:29:03.802781+00:00 to 2026-01-13 18:44:03.802781+00:00...
+   Start price: $50000.00 | End price: $51000.00
+Cannot sell 100.0 shares. Position: 0 shares available
+✅ BET WON! Outcome: YES | Payout: $100.00 | Profit: $50.00
+📝 Bet tracked: 475d3187... | YES | Cost: $50.00
+
+🔍 Settling bet: Test Market 1...
+   Checking bitcoin prices from 2026-01-13 18:29:03.802781+00:00 to 2026-01-13 18:44:03.802781+00:00...
+   Start price: $3000.00 | End price: $3100.00
+Cannot sell 100.0 shares. Position: 0 shares available
+✅ BET WON! Outcome: YES | Payout: $100.00 | Profit: $50.00
+📝 Bet tracked: cdbf9ea7... | YES | Cost: $50.00
+
+🔍 Settling bet: Test Market 2...
+   Checking bitcoin prices from 2026-01-13 18:29:03.802781+00:00 to 2026-01-13 18:44:03.802781+00:00...
+   Start price: $100.00 | End price: $90.00
+Cannot sell 100.0 shares. Position: 0 shares available
+❌ BET LOST! Outcome: NO | Payout: $0.00 | Loss: $-50.00
+Wins: 2, Losses: 1, Total: 3
+Win Rate: 66.7%
+✅ PROBLEM 5 FIXED: Win rate calculates correctly
+
+=== Testing PROBLEM 6: Bet History Empty ===
+📝 Bet tracked: 358f3f10... | YES | Cost: $50.00
+Created bet: 358f3f10-20c0-4e4d-8455-84da42619b59
+Settling bet...
+
+🔍 Settling bet: Bitcoin Up or Down - Test...ok
+test_timezone_handling (test_settlement.TestBetSettlement.test_timezone_handling)
+Test that timezone handling works correctly for settlement timing. ... ok
+test_settlement_buffer_not_ready (test_settlement.TestBetSettlementTimings.test_settlement_buffer_not_ready)
+Test that bets don't settle before buffer period expires ... ok
+test_settlement_buffer_ready (test_settlement.TestBetSettlementTimings.test_settlement_buffer_ready)
+Test that bets settle after buffer period expires ... ok
+
+======================================================================
+ERROR: test_help_message_contains_expected_options (test_cli.TestArgumentParsing.test_help_message_contains_expected_options)
+Test that help message contains expected options.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/stuart/repos/poly-market-trader/tests/test_cli.py", line 181, in test_help_message_contains_expected_options
+    from main import main
+  File "/home/stuart/repos/poly-market-trader/main.py", line 70, in <module>
+    args = parser.parse_args()
+  File "/usr/lib/python3.13/argparse.py", line 1916, in parse_args
+    self.error(msg)
+    ~~~~~~~~~~^^^^^
+  File "/usr/lib/python3.13/argparse.py", line 2672, in error
+    self.exit(2, _('%(prog)s: error: %(message)s\n') % args)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/argparse.py", line 2659, in exit
+    _sys.exit(status)
+    ~~~~~~~~~^^^^^^^^
+SystemExit: 2
+
+======================================================================
+FAIL: test_get_current_price_success (test_api.TestChainlinkDataProvider.test_get_current_price_success)
+Test getting current price for a cryptocurrency.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/usr/lib/python3.13/unittest/mock.py", line 1426, in patched
+    return func(*newargs, **newkeywargs)
+  File "/home/stuart/repos/poly-market-trader/tests/test_api.py", line 171, in test_get_current_price_success
+    self.assertIn('simple/price', args[0])  # URL should contain 'simple/price'
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'simple/price' not found in 'https://api.binance.com/api/v3/ticker/price'
+
+======================================================================
+FAIL: test_get_historical_prices (test_api.TestChainlinkDataProvider.test_get_historical_prices)
+Test getting historical prices.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/usr/lib/python3.13/unittest/mock.py", line 1426, in patched
+    return func(*newargs, **newkeywargs)
+  File "/home/stuart/repos/poly-market-trader/tests/test_api.py", line 210, in test_get_historical_prices
+    mock_get.assert_called_once()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.13/unittest/mock.py", line 958, in assert_called_once
+    raise AssertionError(msg)
+AssertionError: Expected 'get' to have been called once. Called 2 times.
+Calls: [call('https://api.binance.com/api/v3/klines', params={'symbol': 'BTCUSDT', 'interval': '15m', 'limit': 480}, headers={}, timeout=10),
+ call().status_code.__eq__(429),
+ call().raise_for_status(),
+ call().__bool__(),
+ call().json(),
+ call('https://api.coingecko.com/api/v3/coins/bitcoin/market_chart', params={'vs_currency': 'usd', 'days': 7, 'interval': 'hourly'}, headers={}, timeout=10),
+ call().status_code.__eq__(429),
+ call().raise_for_status(),
+ call().__bool__(),
+ call().json()].
+
+======================================================================
+FAIL: test_get_multiple_prices (test_api.TestChainlinkDataProvider.test_get_multiple_prices)
+Test getting prices for multiple cryptocurrencies.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/usr/lib/python3.13/unittest/mock.py", line 1426, in patched
+    return func(*newargs, **newkeywargs)
+  File "/home/stuart/repos/poly-market-trader/tests/test_api.py", line 236, in test_get_multiple_prices
+    mock_get.assert_called_once()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.13/unittest/mock.py", line 958, in assert_called_once
+    raise AssertionError(msg)
+AssertionError: Expected 'get' to have been called once. Called 2 times.
+Calls: [call('https://api.binance.com/api/v3/ticker/price', params={'symbol': 'BTCUSDT'}, headers={}, timeout=10),
+ call().status_code.__eq__(429),
+ call().raise_for_status(),
+ call().__bool__(),
+ call().json(),
+ call('https://api.binance.com/api/v3/ticker/price', params={'symbol': 'ETHUSDT'}, headers={}, timeout=10),
+ call().status_code.__eq__(429),
+ call().raise_for_status(),
+ call().__bool__(),
+ call().json()].
+
+======================================================================
+FAIL: test_analyze_and_bet_bearish_trend (test_autobetting_monitoring.TestMarketMonitoring.test_analyze_and_bet_bearish_trend)
+Test the _analyze_and_bet method with bearish trend.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/usr/lib/python3.13/unittest/mock.py", line 1426, in patched
+    return func(*newargs, **newkeywargs)
+  File "/home/stuart/repos/poly-market-trader/tests/test_autobetting_monitoring.py", line 287, in test_analyze_and_bet_bearish_trend
+    self.assertEqual(kwargs["outcome"], MarketDirection.NO)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: <MarketDirection.YES: 'YES'> != <MarketDirection.NO: 'NO'>
+
+======================================================================
+FAIL: test_analyze_and_bet_bullish_trend (test_autobetting_monitoring.TestMarketMonitoring.test_analyze_and_bet_bullish_trend)
+Test the _analyze_and_bet method with bullish trend.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/usr/lib/python3.13/unittest/mock.py", line 1426, in patched
+    return func(*newargs, **newkeywargs)
+  File "/home/stuart/repos/poly-market-trader/tests/test_autobetting_monitoring.py", line 247, in test_analyze_and_bet_bullish_trend
+    self.assertEqual(kwargs["outcome"], MarketDirection.YES)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: <MarketDirection.NO: 'NO'> != <MarketDirection.YES: 'YES'>
+
+======================================================================
+FAIL: test_get_active_bets_empty (test_autobetting_monitoring.TestPaperTraderMonitoringIntegration.test_get_active_bets_empty)
+Test getting active bets when there are none.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/stuart/repos/poly-market-trader/tests/test_autobetting_monitoring.py", line 354, in test_get_active_bets_empty
+    self.assertEqual(len(active_bets), 0)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 47 != 0
+
+======================================================================
+FAIL: test_auto_bet_command (test_cli.TestAutoBetCommand.test_auto_bet_command)
+Test the --auto-bet command.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/usr/lib/python3.13/unittest/mock.py", line 1426, in patched
+    return func(*newargs, **newkeywargs)
+  File "/home/stuart/repos/poly-market-trader/tests/test_cli.py", line 240, in test_auto_bet_command
+    mock_place_bet.assert_called_once()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.13/unittest/mock.py", line 958, in assert_called_once
+    raise AssertionError(msg)
+AssertionError: Expected 'place_informed_crypto_bet' to have been called once. Called 0 times.
+
+======================================================================
+FAIL: test_custom_balance_command (test_cli.TestCommandLineInterface.test_custom_balance_command)
+Test the --balance command with custom value.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/usr/lib/python3.13/unittest/mock.py", line 1426, in patched
+    return func(*newargs, **newkeywargs)
+  File "/home/stuart/repos/poly-market-trader/tests/test_cli.py", line 170, in test_custom_balance_command
+    self.assertIn("Portfolio Summary", output)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'Portfolio Summary' not found in '📂 Portfolio loaded from data/portfolio.json\n   Balance: $9700.00 | Positions: 1 | Trades: 1\nUsing Binance API (free tier, 1200 requests/minute, no API key required)\nWelcome to Polymarket Paper Trader!\nUse --help to see available options.\n\nRefreshing crypto markets...\n\n============================================================\n  POLYMARKET PAPER TRADER PORTFOLIO\n============================================================\n  Current Balance:      $9,700.00\n  Total Value:        $9,700.00\n  Realized P&L:      $-300.00\n  ROI:               -3.00%\n------------------------------------------------------------\n  Position Stats:  Active Positions: 1 | Active Bets: 47 | Trades: 1\n============================================================\n\nAvailable crypto markets:\n\n=== Available Crypto Markets (showing first 10) ===\n1. Bitcoin Up or Down - January 13, 1PM ET\n    ID: 1160996... | YES Price: N/A | NO Price: N/A\n2. Ethereum Up or Down - January 13, 1PM ET\n    ID: 1160997... | YES Price: N/A | NO Price: N/A\n3. Solana Up or Down - January 13, 1PM ET\n    ID: 1161003... | YES Price: N/A | NO Price: N/A\n4. XRP Up or Down - January 13, 1PM ET\n    ID: 1161004... | YES Price: N/A | NO Price: N/A\n5. XRP Up or Down - January 13, 1:45PM-2:00PM ET\n    ID: 1169215... | YES Price: N/A | NO Price: N/A\n6. Ethereum Up or Down - January 13, 1:45PM-2:00PM ET\n    ID: 1169216... | YES Price: N/A | NO Price: N/A\n7. Bitcoin Up or Down - January 13, 1:45PM-2:00PM ET\n    ID: 1169221... | YES Price: N/A | NO Price: N/A\n8. Solana Up or Down - January 13, 1:45PM-2:00PM ET\n    ID: 1169222... | YES Price: N/A | NO Price: N/A\n9. Ethereum Up or Down - January 13, 1:50PM-1:55PM ET\n    ID: 1169275... | YES Price: N/A | NO Price: N/A\n10. XRP Up or Down - January 13, 1:50PM-1:55PM ET\n    ID: 1169276... | YES Price: N/A | NO Price: N/A\n==================================================\n'
+
+======================================================================
+FAIL: test_monitor_status_command (test_cli.TestCommandLineInterface.test_monitor_status_command)
+Test the --monitor-status command.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/usr/lib/python3.13/unittest/mock.py", line 1426, in patched
+    return func(*newargs, **newkeywargs)
+  File "/home/stuart/repos/poly-market-trader/tests/test_cli.py", line 130, in test_monitor_status_command
+    self.assertIn("Auto-betting Monitoring Status", output)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'Auto-betting Monitoring Status' not found in '📂 Portfolio loaded from data/portfolio.json\n   Balance: $9700.00 | Positions: 1 | Trades: 1\nUsing Binance API (free tier, 1200 requests/minute, no API key required)\nWelcome to Polymarket Paper Trader!\nUse --help to see available options.\n\nRefreshing crypto markets...\n\n============================================================\n  POLYMARKET PAPER TRADER PORTFOLIO\n============================================================\n  Current Balance:      $9,700.00\n  Total Value:        $9,700.00\n  Realized P&L:      $-300.00\n  ROI:               -3.00%\n------------------------------------------------------------\n  Position Stats:  Active Positions: 1 | Active Bets: 47 | Trades: 1\n============================================================\n\nAvailable crypto markets:\n\n=== Available Crypto Markets (showing first 10) ===\n1. Bitcoin Up or Down - January 13, 1PM ET\n    ID: 1160996... | YES Price: N/A | NO Price: N/A\n2. Ethereum Up or Down - January 13, 1PM ET\n    ID: 1160997... | YES Price: N/A | NO Price: N/A\n3. Solana Up or Down - January 13, 1PM ET\n    ID: 1161003... | YES Price: N/A | NO Price: N/A\n4. XRP Up or Down - January 13, 1PM ET\n    ID: 1161004... | YES Price: N/A | NO Price: N/A\n5. XRP Up or Down - January 13, 1:45PM-2:00PM ET\n    ID: 1169215... | YES Price: N/A | NO Price: N/A\n6. Ethereum Up or Down - January 13, 1:45PM-2:00PM ET\n    ID: 1169216... | YES Price: N/A | NO Price: N/A\n7. Bitcoin Up or Down - January 13, 1:45PM-2:00PM ET\n    ID: 1169221... | YES Price: N/A | NO Price: N/A\n8. Solana Up or Down - January 13, 1:45PM-2:00PM ET\n    ID: 1169222... | YES Price: N/A | NO Price: N/A\n9. Ethereum Up or Down - January 13, 1:50PM-1:55PM ET\n    ID: 1169275... | YES Price: N/A | NO Price: N/A\n10. XRP Up or Down - January 13, 1:50PM-1:55PM ET\n    ID: 1169276... | YES Price: N/A | NO Price: N/A\n==================================================\n'
+
+======================================================================
+FAIL: test_portfolio_command (test_cli.TestCommandLineInterface.test_portfolio_command)
+Test the --portfolio command.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/usr/lib/python3.13/unittest/mock.py", line 1426, in patched
+    return func(*newargs, **newkeywargs)
+  File "/home/stuart/repos/poly-market-trader/tests/test_cli.py", line 34, in test_portfolio_command
+    self.assertIn("Portfolio Summary", output)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'Portfolio Summary' not found in '📂 Portfolio loaded from data/portfolio.json\n   Balance: $9700.00 | Positions: 1 | Trades: 1\nUsing Binance API (free tier, 1200 requests/minute, no API key required)\nWelcome to Polymarket Paper Trader!\nUse --help to see available options.\n\nRefreshing crypto markets...\n\n============================================================\n  POLYMARKET PAPER TRADER PORTFOLIO\n============================================================\n  Current Balance:      $9,700.00\n  Total Value:        $9,700.00\n  Realized P&L:      $-300.00\n  ROI:               -3.00%\n------------------------------------------------------------\n  Position Stats:  Active Positions: 1 | Active Bets: 47 | Trades: 1\n============================================================\n\nAvailable crypto markets:\n\n=== Available Crypto Markets (showing first 10) ===\n1. Bitcoin Up or Down - January 13, 1PM ET\n    ID: 1160996... | YES Price: N/A | NO Price: N/A\n2. Ethereum Up or Down - January 13, 1PM ET\n    ID: 1160997... | YES Price: N/A | NO Price: N/A\n3. Solana Up or Down - January 13, 1PM ET\n    ID: 1161003... | YES Price: N/A | NO Price: N/A\n4. XRP Up or Down - January 13, 1PM ET\n    ID: 1161004... | YES Price: N/A | NO Price: N/A\n5. XRP Up or Down - January 13, 1:45PM-2:00PM ET\n    ID: 1169215... | YES Price: N/A | NO Price: N/A\n6. Ethereum Up or Down - January 13, 1:45PM-2:00PM ET\n    ID: 1169216... | YES Price: N/A | NO Price: N/A\n7. Bitcoin Up or Down - January 13, 1:45PM-2:00PM ET\n    ID: 1169221... | YES Price: N/A | NO Price: N/A\n8. Solana Up or Down - January 13, 1:45PM-2:00PM ET\n    ID: 1169222... | YES Price: N/A | NO Price: N/A\n9. Ethereum Up or Down - January 13, 1:50PM-1:55PM ET\n    ID: 1169275... | YES Price: N/A | NO Price: N/A\n10. XRP Up or Down - January 13, 1:50PM-1:55PM ET\n    ID: 1169276... | YES Price: N/A | NO Price: N/A\n==================================================\n'
+
+----------------------------------------------------------------------
+Ran 96 tests in 14.751s
+
+FAILED (failures=10, errors=1, skipped=3)
+
+   Checking bitcoin prices from 2026-01-13 18:39:03.803706+00:00 to 2026-01-13 18:44:03.803709+00:00...
+   Start price: $50000.00 | End price: $51000.00
+Cannot sell 100.0 shares. Position: 0 shares available
+✅ BET WON! Outcome: YES | Payout: $100.00 | Profit: $50.00
+Settlement result: {'success': True, 'status': 'won', 'payout': 100.0, 'profit_loss': 50.0}
+✅ PROBLEM 6 FIXED: Bet history is populated
+
+=== Testing Timezone Handling ===
+📝 Bet tracked: 5c552263... | YES | Cost: $50.00
+
+🔍 Settling bet: Timezone Test...
+   Checking bitcoin prices from 2026-01-13 18:29:03.804337+00:00 to 2026-01-13 18:44:03.804337+00:00...
+   Start price: $50000.00 | End price: $51000.00
+Cannot sell 100.0 shares. Position: 0 shares available
+✅ BET WON! Outcome: YES | Payout: $100.00 | Profit: $50.00
+Settlement results: [{'success': True, 'status': 'won', 'payout': 100.0, 'profit_loss': 50.0}]
+✅ Timezone handling works correctly
+
+=== Testing Settlement Buffer (Not Ready) ===
+📝 Bet tracked: c4e75665... | YES | Cost: $50.00
+✅ Settlement buffer prevents premature settlement
+
+=== Testing Settlement Buffer (Ready) ===
+📝 Bet tracked: 11977106... | YES | Cost: $50.00
+
+🔍 Settling bet: Buffer Ready Test...
+   Checking bitcoin prices from 2026-01-13 18:33:03.805292+00:00 to 2026-01-13 18:48:03.805292+00:00...
+   Start price: $50000.00 | End price: $51000.00
+Cannot sell 100.0 shares. Position: 0 shares available
+✅ BET WON! Outcome: YES | Payout: $100.00 | Profit: $50.00
+✅ Settlement buffer allows settlement after expiration
