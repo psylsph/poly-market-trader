@@ -12,10 +12,10 @@ DEFAULT_MAX_PRICE = 1.0  # Default maximum price for buying tokens
 
 # Crypto keywords to identify crypto-related markets
 CRYPTO_KEYWORDS = [
-    'bitcoin', 'ethereum', 'crypto', 'btc', 'eth', 'defi',
-    'blockchain', 'solana', 'cardano', 'ripple', 'dogecoin',
-    'polkadot', 'litecoin', 'bitcoin cash', 'bnb', 'xrp',
-    'altcoin', 'stablecoin', 'nft', 'web3', 'decentralized finance'
+    'bitcoin', 'btc',
+    'ethereum', 'eth',
+    'solana', 'sol',
+    'ripple', 'xrp'
 ]
 
 # Risk management

@@ -15,6 +15,7 @@ htmlcov/
 TEST_AND_LINT_SUMMARY.md
 .ipynb_checkpoints
 .mypy_cache/
-IMPLEMENTATION_PLAN.md
-data/
+data/*.json
 archive/
+keys.env
+polymarket*.json

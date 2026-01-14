@@ -1,5 +1,6 @@
 import time
 import threading
+import json
 from typing import Dict, List, Optional
 from datetime import datetime, timezone, timedelta
 from ..models.trade import MarketDirection, Trade, TradeType
@@ -126,12 +127,11 @@ class MarketMonitor:
             return
 
         print(f"📊 Found {len(crypto_markets)} 15M crypto markets")
-        print("🎯 Analyzing top 5 markets...")
+        print("🎯 Analyzing all markets...")
         print()
 
-        # Analyze up to 5 markets (Binance API allows 1200 requests/minute)
-        # This is much better than CoinGecko's free tier (~10 req/min)
-        for i, market in enumerate(crypto_markets[:5], 1):
+        # Analyze all markets
+        for i, market in enumerate(crypto_markets, 1):
             self._analyze_and_bet(market, i)
 
         print()
@@ -165,11 +165,15 @@ class MarketMonitor:
                 print(f"Could not get current price for {crypto_name}")
                 return
             
-            # Get 15-minute trend
+            # Get 15-minute trend and volatility
             trend = self.chainlink_data.get_recent_trend_15min(crypto_name, lookback_minutes=60)
             volatility = self.chainlink_data.get_volatility_15min(crypto_name, lookback_minutes=60)
             
-            print(f"  Current price: ${current_price:.2f}, Trend: {trend}, Volatility: {volatility:.2f}%")
+            # Get RSI for additional confirmation
+            indicators = self.chainlink_data.get_technical_indicators(crypto_name, timeframe='15min')
+            rsi = indicators.get('rsi', 50.0)
+            
+            print(f"  Current price: ${current_price:.2f}, Trend: {trend}, Volatility: {volatility:.2f}%, RSI: {rsi:.2f}")
             
             # Determine bet direction based on trend and volatility
             # STRATEGY UPDATE: Mean Reversion (Reverse Logic)
@@ -183,16 +187,12 @@ class MarketMonitor:
                 outcome = MarketDirection.YES
                 confidence = 0.7
             elif trend == 'bullish':
-                # Still bet on reversal
                 outcome = MarketDirection.NO
                 confidence = 0.55
             elif trend == 'bearish':
-                # Still bet on reversal
                 outcome = MarketDirection.YES
                 confidence = 0.55
             else:
-                # Neutral trend - check if there's any price movement
-                # Mean reversion here too
                 recent = self.chainlink_data.get_recent_trend_15min(crypto_name, lookback_minutes=30)
                 if recent == 'bullish':
                     outcome = MarketDirection.NO
@@ -201,68 +201,219 @@ class MarketMonitor:
                     outcome = MarketDirection.YES
                     confidence = 0.5
                 else:
-                    # Still neutral - skip
                     return
             
-            # Only bet if we have sufficient confidence and balance
-            min_confidence = 0.5
-            bet_amount = min(500.0, float(self.portfolio.current_balance) * 0.05)  # Bet max 5% of balance
+            # RSI Adjustment: Boost confidence if RSI confirms mean reversion
+            # RSI > 70: Overbought -> Price likely to drop -> Confirms Bullish -> Pullback -> Bet NO
+            # RSI < 30: Oversold -> Price likely to rise -> Confirms Bearish -> Bounce -> Bet YES
+            if rsi > 70 and outcome == MarketDirection.NO:
+                confidence += 0.1
+                print(f"  RSI ({rsi:.2f}) confirms NO (overbought), boosting confidence to {confidence:.2f}")
+            elif rsi < 30 and outcome == MarketDirection.YES:
+                confidence += 0.1
+                print(f"  RSI ({rsi:.2f}) confirms YES (oversold), boosting confidence to {confidence:.2f}")
+            elif 40 < rsi < 60:
+                # Neutral RSI, slight confidence boost for mean reversion
+                confidence += 0.05
+                print(f"  RSI ({rsi:.2f}) is neutral, slight confidence boost to {confidence:.2f}")
             
-            if confidence >= min_confidence and bet_amount > 10:  # Minimum $10 bet
-                # Get current market prices to determine max price we're willing to pay
+            # MACD Adjustment
+            macd_histogram = indicators.get('macd_histogram', 0)
+            sma_alignment = indicators.get('sma_alignment', 0)
+            
+            if macd_histogram > 0 and outcome == MarketDirection.YES:
+                confidence += 0.05
+                print(f"  MACD ({macd_histogram:.4f}) bullish, boosting YES confidence to {confidence:.2f}")
+            elif macd_histogram < 0 and outcome == MarketDirection.NO:
+                confidence += 0.05
+                print(f"  MACD ({macd_histogram:.4f}) bearish, boosting NO confidence to {confidence:.2f}")
+            
+            if sma_alignment > 0 and outcome == MarketDirection.YES:
+                confidence += 0.05
+                print(f"  SMA alignment bullish, boosting YES confidence to {confidence:.2f}")
+            elif sma_alignment < 0 and outcome == MarketDirection.NO:
+                confidence += 0.05
+                print(f"  SMA alignment bearish, boosting NO confidence to {confidence:.2f}")
+            
+            # Cap confidence at 0.95
+            confidence = min(0.95, confidence)
+            
+            # Get current market price
+            # First try to extract from the market object itself (from /events endpoint)
+            yes_price = 0.0
+            no_price = 0.0
+            
+            try:
+                raw_prices = market.get('outcomePrices') or market.get('outcome_prices')
+                outcomes = market.get('outcomes')
+                
+                if raw_prices and outcomes:
+                    # Handle string formats
+                    if isinstance(raw_prices, str):
+                        raw_prices = json.loads(raw_prices)
+                    if isinstance(outcomes, str):
+                        outcomes = json.loads(outcomes)
+                        
+                    if len(outcomes) >= 2 and len(raw_prices) >= 2:
+                        # Map indices (Up->Yes, Down->No)
+                        yes_index = 0
+                        no_index = 1
+                        for i, outcome_name in enumerate(outcomes):
+                            outcome_lower = str(outcome_name).lower()
+                            if outcome_lower in ['yes', 'up', 'long']:
+                                yes_index = i
+                            elif outcome_lower in ['no', 'down', 'short']:
+                                no_index = i
+                        
+                        if len(raw_prices) > max(yes_index, no_index):
+                            yes_price = float(raw_prices[yes_index])
+                            no_price = float(raw_prices[no_index])
+            except Exception as e:
+                print(f"  Error parsing prices from market object: {e}")
+            
+            # If prices still 0, try fetching fresh
+            if yes_price == 0.0 and no_price == 0.0:
                 market_prices = self.market_data.get_market_prices(market_id)
+                yes_price = market_prices.get('yes', 0.0)
+                no_price = market_prices.get('no', 0.0)
+            
+            print(f"  Market prices: YES=${yes_price:.2f} | NO=${no_price:.2f}")
+            
+            # ARBITRAGE CHECK: If YES + NO < 0.99, bet on BOTH outcomes for guaranteed profit
+            price_sum = yes_price + no_price
+            arbitrage_threshold = 0.99
+            
+            if price_sum < arbitrage_threshold and yes_price > 0.01 and no_price > 0.01:
+                arbitrage_profit = (1.0 - price_sum) * 100  # Expected profit %
+                print(f"  🎯 ARBITRAGE OPPORTUNITY! Sum={price_sum:.2f} < {arbitrage_threshold}")
+                print(f"  💰 Guaranteed profit: {arbitrage_profit:.1f}%")
                 
-                # For YES/NO markets, we want to buy the outcome we think will win
-                # Use a reasonable price threshold based on market sentiment
-                max_price = 0.7 if outcome == MarketDirection.YES else 0.7  # Conservative approach
+                # Place bets on BOTH outcomes
+                bet_amount = min(500.0, float(self.portfolio.current_balance) * 0.1)  # 10% for arbitrage
                 
-                print(f"  Placing {confidence:.1f} confidence bet: {outcome.value} on {question[:30]}...")
+                # Buy YES
+                max_price_yes = min(yes_price * 1.05, 0.95)
+                quantity_yes = bet_amount / max_price_yes
+                print(f"  Placing YES bet: ${bet_amount:.2f} @ ${max_price_yes:.2f} (qty: {quantity_yes:.2f})")
                 
-                # Calculate quantity based on amount and max price
-                quantity = bet_amount / max_price
-                
-                # Execute the trade
-                trade = self.order_executor.place_buy_order(
+                trade_yes = self.order_executor.place_buy_order(
                     market_id=market_id,
-                    outcome=outcome,
-                    quantity=quantity,
-                    max_price=max_price
+                    outcome=MarketDirection.YES,
+                    quantity=quantity_yes,
+                    max_price=max_price_yes
                 )
                 
-                if trade:
-                    # Get market end time and start time for settlement
-                    market_end_date = market.get('endDate', '')
-                    market_start_date = ''
-                    
-                    # Calculate start time (15 minutes before end time)
-                    if market_end_date:
-                        try:
-                            end_time = datetime.fromisoformat(market_end_date.replace('Z', '+00:00'))
-                            start_time = end_time - timedelta(minutes=15)
-                            market_start_date = start_time.isoformat()
-                        except:
-                            market_start_date = None
-                    
-                    # Add to active bets for monitoring using BetTracker
-                    bet_info = {
-                        'market_id': market_id,
-                        'question': question,
-                        'crypto_name': crypto_name,
-                        'outcome': outcome.value,
-                        'quantity': quantity,
-                        'entry_price': max_price,
-                        'cost': quantity * max_price,
-                        'placed_at': datetime.now(timezone.utc).isoformat(),
-                        'market_start_time': market_start_date,
-                        'market_end_time': market_end_date,
-                        'entry_crypto_price': current_price if current_price else None
-                    }
-                    
-                    self.bet_tracker.add_active_bet(bet_info)
-                    
-                    print(f"  Bet placed successfully! Quantity: {quantity:.2f} at ${max_price:.2f}")
+                # Buy NO
+                max_price_no = min(no_price * 1.05, 0.95)
+                quantity_no = bet_amount / max_price_no
+                print(f"  Placing NO bet: ${bet_amount:.2f} @ ${max_price_no:.2f} (qty: {quantity_no:.2f})")
+                
+                trade_no = self.order_executor.place_buy_order(
+                    market_id=market_id,
+                    outcome=MarketDirection.NO,
+                    quantity=quantity_no,
+                    max_price=max_price_no
+                )
+                
+                if trade_yes and trade_no:
+                    print(f"  ✅ Arbitrage bets placed! Total cost: ${bet_amount * 2:.2f}")
+                    print(f"  📈 Guaranteed payout: $1.00 per share = ${quantity_yes + quantity_no:.2f}")
+                    print(f"  💵 Expected profit: ${(quantity_yes + quantity_no) - (bet_amount * 2):.2f}")
                 else:
-                    print(f"  Failed to place bet on {question[:30]}...")
+                    print(f"  ❌ Failed to place arbitrage bets")
+                
+                return  # Exit after placing arbitrage bets
+            
+            # Determine the price we would pay for our chosen outcome
+            if outcome == MarketDirection.YES:
+                market_price = yes_price
+            else:
+                market_price = no_price
+            
+            print(f"  Market price for {outcome.value}: ${market_price:.2f}")
+            
+            # Log analysis results even if prices aren't available yet
+            print(f"  Analysis: Trend={trend}, RSI={rsi:.2f}, MACD={macd_histogram:.4f}")
+            print(f"  Confidence: {confidence:.2f} | Outcome: {outcome.value}")
+            
+            # Skip bet placement if market price is $0.00 (market too new, no trading yet)
+            if market_price <= 0.01:
+                print(f"  ⏳ Waiting for trading activity... Will retry in next cycle")
+                return
+            
+            # Value Betting Check: Confidence must be higher than market price + margin
+            # Margin: 0.05 (5%) to account for spread and prediction error
+            margin = 0.05
+            min_confidence_threshold = 0.55
+            
+            # Effective threshold price: If market price is $0.80, we need > $0.85 confidence to bet
+            if confidence < (market_price + margin):
+                print(f"  Skipping: Confidence ({confidence:.2f}) <= Price + Margin ({market_price:.2f} + {margin:.2f})")
+                return
+            
+            if confidence < min_confidence_threshold:
+                print(f"  Skipping: Confidence ({confidence:.2f}) below minimum threshold ({min_confidence_threshold:.2f})")
+                return
+            
+            # Bet amount: Max 5% of balance, capped at $500
+            bet_amount = min(500.0, float(self.portfolio.current_balance) * 0.05)
+            
+            if bet_amount <= 10:
+                print(f"  Skipping: Insufficient balance to bet (min $10 required)")
+                return
+            
+            # Use market price + small buffer as max price (or just market price if we want to match exactly)
+            # In Polymarket, you usually pay the current price or a bit more to get filled immediately
+            max_price = min(market_price * 1.05, 0.95)  # Cap at 0.95 to avoid overpaying
+            
+            print(f"  Placing {confidence:.1f} confidence bet: {outcome.value} on {question[:30]}... (Price: ${market_price:.2f})")
+            
+            # Calculate quantity based on amount and max price
+            quantity = bet_amount / max_price
+            
+            # Execute the trade
+            trade = self.order_executor.place_buy_order(
+                market_id=market_id,
+                outcome=outcome,
+                quantity=quantity,
+                max_price=max_price
+            )
+            
+            if trade:
+                # Get market end time and start time for settlement
+                market_end_date = market.get('endDate', '')
+                market_start_date = ''
+                
+                # Calculate start time (15 minutes before end time)
+                if market_end_date:
+                    try:
+                        end_time = datetime.fromisoformat(market_end_date.replace('Z', '+00:00'))
+                        start_time = end_time - timedelta(minutes=15)
+                        market_start_date = start_time.isoformat()
+                    except:
+                        market_start_date = None
+                
+                # Add to active bets for monitoring using BetTracker
+                bet_info = {
+                    'market_id': market_id,
+                    'market_slug': market.get('slug', ''),
+                    'question': question,
+                    'crypto_name': crypto_name,
+                    'outcome': outcome.value,
+                    'quantity': quantity,
+                    'entry_price': max_price,
+                    'cost': quantity * max_price,
+                    'placed_at': datetime.now(timezone.utc).isoformat(),
+                    'market_start_time': market_start_date,
+                    'market_end_time': market_end_date,
+                    'entry_crypto_price': current_price if current_price else None
+                }
+                
+                self.bet_tracker.add_active_bet(bet_info)
+                
+                print(f"  Bet placed successfully! Quantity: {quantity:.2f} at ${max_price:.2f}")
+            else:
+                print(f"  Failed to place bet on {question[:30]}...")
             
         except Exception as e:
             print(f"Error analyzing market {market_id}: {e}")
@@ -367,29 +518,8 @@ class MarketMonitor:
             'eth': 'ethereum',
             'solana': 'solana',
             'sol': 'solana',
-            'cardano': 'cardano',
-            'ada': 'cardano',
             'ripple': 'ripple',
-            'xrp': 'ripple',
-            'dogecoin': 'dogecoin',
-            'doge': 'dogecoin',
-            'polkadot': 'polkadot',
-            'dot': 'polkadot',
-            'litecoin': 'litecoin',
-            'ltc': 'litecoin',
-            'bitcoin cash': 'bitcoin-cash',
-            'bch': 'bitcoin-cash',
-            'bnb': 'bnb',
-            'binance coin': 'bnb',
-            'chainlink': 'chainlink',
-            'link': 'chainlink',
-            'polygon': 'polygon',
-            'matic': 'polygon',
-            'defi': 'defi',
-            'decentralized finance': 'defi',
-            'coinbase': 'coinbase',
-            'shiba': 'shiba-inu',
-            'shib': 'shiba-inu'
+            'xrp': 'ripple'
         }
         
         for phrase, crypto_name in crypto_mappings.items():

@@ -31,7 +31,7 @@ class TestCommandLineInterface(unittest.TestCase):
             sys.stdout = sys.__stdout__  # Reset redirect
         
         output = captured_output.getvalue()
-        self.assertIn("Portfolio Summary", output)
+        self.assertIn("POLYMARKET PAPER TRADER PORTFOLIO", output)
         self.assertIn("Current Balance", output)
     
     @patch('sys.argv', ['main.py', '--positions'])
@@ -127,8 +127,8 @@ class TestCommandLineInterface(unittest.TestCase):
             sys.stdout = sys.__stdout__  # Reset redirect
         
         output = captured_output.getvalue()
-        self.assertIn("Auto-betting Monitoring Status", output)
-        self.assertIn("Monitoring:", output)
+        self.assertIn("Auto-Betting Status", output)
+        self.assertIn("Running:", output)
     
     @patch('sys.argv', ['main.py', '--active-bets'])
     def test_active_bets_command(self):
@@ -167,8 +167,8 @@ class TestCommandLineInterface(unittest.TestCase):
             sys.stdout = sys.__stdout__  # Reset redirect
         
         output = captured_output.getvalue()
-        self.assertIn("Portfolio Summary", output)
-        # The balance might not be exactly 15000 due to how the main function works
+        self.assertIn("POLYMARKET PAPER TRADER PORTFOLIO", output)
+        # The balance might not be exactly 15000 due to how main function works
         # but the command should be processed without errors
 
 
@@ -238,7 +238,7 @@ class TestAutoBetCommand(unittest.TestCase):
         output = captured_output.getvalue()
         # Should attempt to place a bet
         mock_place_bet.assert_called_once()
-        self.assertIn("Auto bet placed successfully", output)
+        self.assertIn("Auto-bet placed successfully", output)
 
 
 if __name__ == '__main__':

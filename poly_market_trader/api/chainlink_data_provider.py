@@ -44,31 +44,8 @@ class ChainlinkDataProvider:
             'eth': 'ETH',
             'solana': 'SOL',
             'sol': 'SOL',
-            'cardano': 'ADA',
-            'ada': 'ADA',
             'ripple': 'XRP',
-            'xrp': 'XRP',
-            'dogecoin': 'DOGE',
-            'doge': 'DOGE',
-            'polkadot': 'DOT',
-            'dot': 'DOT',
-            'litecoin': 'LTC',
-            'ltc': 'LTC',
-            'bitcoin-cash': 'BCH',
-            'bch': 'BCH',
-            'bnb': 'BNB',
-            'binancecoin': 'BNB',
-            'chainlink': 'LINK',
-            'link': 'LINK',
-            'polygon': 'MATIC',
-            'matic': 'MATIC',
-            'avalanche': 'AVAX',
-            'shiba-inu': 'SHIB',
-            'shib': 'SHIB',
-            'tron': 'TRX',
-            'trx': 'TRX',
-            'solana': 'SOL',
-            'avalanche': 'AVAX'
+            'xrp': 'XRP'
         }
 
         # Common cryptocurrency IDs for CoinGecko API (fallback)
@@ -76,20 +53,9 @@ class ChainlinkDataProvider:
             'bitcoin': 'bitcoin',
             'ethereum': 'ethereum',
             'solana': 'solana',
-            'cardano': 'cardano',
             'ripple': 'ripple',
-            'dogecoin': 'dogecoin',
-            'polkadot': 'polkadot',
-            'litecoin': 'litecoin',
-            'bitcoin-cash': 'bitcoin-cash',
-            'bnb': 'binancecoin',
             'xrp': 'ripple',
-            'usd-coin': 'usd-coin',
-            'solana': 'solana',
-            'avalanche': 'avalanche-2',
-            'chainlink': 'chainlink',
-            'polygon': 'polygon',
-            'defi': 'defi-pulse-index'
+            'solana': 'solana'
         }
 
         # Cache for reducing API calls (cache price for 30 seconds)
@@ -273,7 +239,8 @@ class ChainlinkDataProvider:
                 # Binance returns: [open_time, open, high, low, close, volume, close_time, ...]
                 # We want (timestamp, close_price)
                 for kline in data:
-                    timestamp = datetime.fromtimestamp(kline[0] / 1000)
+                    timestamp_ms = int(kline[0])
+                    timestamp = datetime.fromtimestamp(timestamp_ms / 1000)
                     close_price = float(kline[4])  # Close price is at index 4
                     prices.append((timestamp, close_price))
 
@@ -560,26 +527,47 @@ class ChainlinkDataProvider:
         :return: Dictionary with indicators
         """
         hours = 1  # Default to 1 hour
-        if timeframe == '1hour' or timeframe == '1h':
-            hours = 1
+        interval = '15m'
+        rsi_period = 14
+        
+        if timeframe == '15min':
+            hours = 8  # Need 8 hours for 14-period RSI on 15m candles (32 points)
+            interval = '15m'
+        elif timeframe == '1hour' or timeframe == '1h':
+            hours = 48  # 2 days of 1h candles
+            interval = '1h'
         elif timeframe == '1day' or timeframe == '1d':
-            hours = 24
-
-        interval = '15m' if timeframe == '15min' or timeframe == '15min' else '1h'
+            hours = 336  # 14 days of 1d candles
+            interval = '1d'
 
         historical_prices = self.get_historical_prices(crypto_name, hours=hours, interval=interval)
 
-        if not historical_prices or len(historical_prices) < 2:
+        if not historical_prices or len(historical_prices) < rsi_period + 1:
             return {}
 
         prices = [price for dt, price in historical_prices]
 
-        # Simple Moving Average (SMA)
-        sma = sum(prices) / len(prices)
+        # Short-term SMA (9-period) - faster response
+        sma_9 = sum(prices[-9:]) / min(9, len(prices)) if len(prices) >= 9 else sum(prices) / len(prices)
+        
+        # Medium-term SMA (20-period) - medium response
+        sma_20 = sum(prices[-20:]) / min(20, len(prices)) if len(prices) >= 20 else sma_9
+        
+        # Long-term SMA (50-period) - slow response
+        sma_50 = sum(prices[-50:]) / min(50, len(prices)) if len(prices) >= 50 else sma_20
 
-        # Price vs SMA ratio
+        # Current price vs SMAs
         current_price = prices[-1]
-        price_sma_ratio = (current_price / sma) * 100 if sma > 0 else 100
+        
+        # Price vs SMA ratio (using 20-period as reference)
+        price_sma_ratio = (current_price / sma_20) * 100 if sma_20 > 0 else 100
+        
+        # SMA alignment signal (bullish if price > sma_9 > sma_20 > sma_50)
+        sma_alignment = 0
+        if sma_9 > sma_20 > sma_50:
+            sma_alignment = 0.1  # Strong bullish alignment
+        elif sma_9 < sma_20 < sma_50:
+            sma_alignment = -0.1  # Strong bearish alignment
 
         # Volatility
         if len(prices) > 1:
@@ -590,11 +578,107 @@ class ChainlinkDataProvider:
         else:
             volatility = 0.0
 
+        # RSI (7-period for 15min trading - faster signals)
+        rsi_period = 7 if timeframe == '15min' else 14
+        rsi = self.calculate_rsi(prices, period=rsi_period)
+        
+        # MACD (12, 26, 9 standard)
+        macd_line, signal_line, macd_histogram = self.calculate_macd(prices, fast=12, slow=26, signal=9)
+
         return {
-            'sma': sma,
+            'sma_9': sma_9,
+            'sma_20': sma_20,
+            'sma_50': sma_50,
             'price_sma_ratio': price_sma_ratio,
-            'volatility': volatility
+            'sma_alignment': sma_alignment,
+            'volatility': volatility,
+            'rsi': rsi,
+            'macd_line': macd_line,
+            'signal_line': signal_line,
+            'macd_histogram': macd_histogram
         }
+
+    def calculate_rsi(self, prices: List[float], period: int = 14) -> float:
+        """
+        Calculate the Relative Strength Index (RSI) for a list of prices.
+        
+        :param prices: List of prices (must have at least 'period' + 1 values)
+        :param period: RSI period (standard is 14, use 7 for faster signals on 15min)
+        :return: RSI value (0-100)
+        """
+        if len(prices) < period + 1:
+            return 50.0  # Default to neutral if not enough data
+
+        gains = []
+        losses = []
+
+        for i in range(1, len(prices)):
+            change = prices[i] - prices[i - 1]
+            if change > 0:
+                gains.append(change)
+                losses.append(0)
+            else:
+                gains.append(0)
+                losses.append(abs(change))
+
+        # Use the last 'period' values
+        recent_gains = gains[-period:]
+        recent_losses = losses[-period:]
+
+        avg_gain = sum(recent_gains) / period
+        avg_loss = sum(recent_losses) / period
+
+        if avg_loss == 0:
+            return 100.0  # Strong bullish signal if no losses
+
+        rs = avg_gain / avg_loss
+        rsi = 100 - (100 / (1 + rs))
+
+        return rsi
+
+    def calculate_macd(self, prices: List[float], fast: int = 12, slow: int = 26, signal: int = 9) -> Tuple[float, float, float]:
+        """
+        Calculate MACD (Moving Average Convergence Divergence)
+        
+        :param prices: List of prices
+        :param fast: Fast EMA period (default 12)
+        :param slow: Slow EMA period (default 26)
+        :param signal: Signal line period (default 9)
+        :return: Tuple of (MACD line, Signal line, MACD Histogram)
+        """
+        if len(prices) < slow + signal:
+            return 0.0, 0.0, 0.0
+        
+        # Calculate EMAs
+        def calc_ema(prices_list, period):
+            if len(prices_list) < period:
+                return sum(prices_list) / len(prices_list)
+            k = 2 / (period + 1)
+            ema = prices_list[0]
+            for price in prices_list[1:]:
+                ema = price * k + ema * (1 - k)
+            return ema
+        
+        ema_fast = calc_ema(prices[-fast:], fast) if len(prices) >= fast else calc_ema(prices, len(prices))
+        ema_slow = calc_ema(prices[-slow:], slow) if len(prices) >= slow else calc_ema(prices, len(prices))
+        
+        macd_line = ema_fast - ema_slow
+        
+        # Calculate signal line (EMA of MACD line)
+        # Create synthetic MACD values for signal calculation
+        macd_values = []
+        for i in range(max(0, len(prices) - slow), len(prices)):
+            # Recalculate MACD for each point (simplified)
+            start_idx = max(0, i - slow + 1)
+            fast_ema = calc_ema(prices[start_idx:i+1], fast) if i - start_idx + 1 >= fast else calc_ema(prices[start_idx:i+1], i - start_idx + 1)
+            slow_ema = calc_ema(prices[start_idx:i+1], slow) if i - start_idx + 1 >= slow else calc_ema(prices[start_idx:i+1], i - start_idx + 1)
+            macd_values.append(fast_ema - slow_ema)
+        
+        signal_line = calc_ema(macd_values[-signal:], signal) if len(macd_values) >= signal else calc_ema(macd_values, len(macd_values))
+        
+        macd_histogram = macd_line - signal_line
+        
+        return macd_line, signal_line, macd_histogram
 
     # Legacy methods for test compatibility (not used in app)
     def get_chainlink_feed_address(self, pair: str) -> Optional[str]:

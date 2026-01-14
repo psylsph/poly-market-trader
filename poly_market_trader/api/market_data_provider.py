@@ -15,6 +15,145 @@ class MarketDataProvider:
         self.clob_api_base = CLOB_API_BASE
         self.data_api_base = DATA_API_BASE
 
+    def _fetch_events(self, limit=100, offset=0) -> List[Dict]:
+        """Fetch events from Gamma API"""
+        url = f"{self.gamma_api_base}/events"
+        
+        params = {
+            'active': 'true',
+            'closed': 'false',
+            'limit': limit,
+            'offset': offset
+        }
+        
+        try:
+            response = requests.get(url, params=params, timeout=15)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching events: {e}")
+            return []
+
+    def get_market_prices(self, market_id: str) -> Dict[str, float]:
+        """
+        Get current prices for both YES and NO outcomes of a market
+        Checks outcomePrices first, then falls back to CLOB prices
+        :param market_id: The market ID
+        :return: Dictionary with YES and NO prices
+        """
+        market_details = self.get_market_by_id(market_id)
+        prices = {'yes': 0.0, 'no': 0.0}
+        
+        outcomes = market_details.get('outcomes')
+        # Parse outcomes
+        if outcomes and isinstance(outcomes, str):
+            try:
+                outcomes = json.loads(outcomes)
+            except:
+                pass
+        
+        if not outcomes or not isinstance(outcomes, list) or len(outcomes) < 2:
+            return prices
+
+        # Determine indices
+        yes_index = 0
+        no_index = 1
+        for i, outcome in enumerate(outcomes):
+            outcome_lower = str(outcome).lower()
+            if outcome_lower in ['yes', 'up', 'long']:
+                yes_index = i
+            elif outcome_lower in ['no', 'down', 'short']:
+                no_index = i
+
+        # Try outcomePrices first
+        raw_prices = market_details.get('outcomePrices') or market_details.get('outcome_prices')
+        if raw_prices:
+            if isinstance(raw_prices, str):
+                try:
+                    raw_prices = json.loads(raw_prices)
+                except:
+                    pass
+            
+            if isinstance(raw_prices, list) and len(raw_prices) >= 2:
+                try:
+                    # Use max index to avoid index out of range
+                    if len(raw_prices) > max(yes_index, no_index):
+                        prices['yes'] = float(raw_prices[yes_index])
+                        prices['no'] = float(raw_prices[no_index])
+                except Exception as e:
+                    print(f"Error parsing raw prices: {e}")
+
+        return prices
+
+    def get_crypto_up_down_markets(self, limit: int = 100) -> List[Dict]:
+        """
+        Get crypto up/down markets (15M, 1H, 4H) with volume > 0
+        Uses regex: (eth|xrp|btc|sol)-updown-(15m|1h|4h)-
+        :param limit: Number of markets to return
+        :return: List of crypto up/down market dictionaries
+        """
+        # Fetch all active events with pagination
+        all_events = []
+        offset = 0
+        event_limit = 100
+        max_events = 10000 # Increased limit to scan enough events
+        
+        print("Scanning active events for opportunities...")
+        while len(all_events) < max_events:
+            events = self._fetch_events(limit=event_limit, offset=offset)
+            if not events:
+                break
+            all_events.extend(events)
+            if len(events) < event_limit:
+                break
+            offset += event_limit
+        
+        print(f"Scanned {len(all_events)} events.")
+
+        # Filter for crypto up/down markets by slug regex and volume
+        crypto_markets = []
+        # Strict regex as requested
+        slug_pattern = re.compile(r'(eth|xrp|btc|sol)-updown-(15m|1h|4h)-')
+        
+        for event in all_events:
+            slug = event.get('slug', '').lower()
+            
+            # Apply strict regex filter on slug
+            if not slug_pattern.search(slug):
+                continue
+            
+            # Get markets from event
+            markets = event.get('markets', [])
+            if not markets:
+                continue
+            
+            # Check volume at MARKET level
+            for market in markets:
+                try:
+                    volume = float(market.get('volume', 0))
+                except (ValueError, TypeError):
+                    volume = 0.0
+                
+                # Only include markets with volume > 0
+                if volume > 0:
+                    market['title'] = event.get('title', '')
+                    market['slug'] = event.get('slug', '')
+                    market['event_id'] = event.get('id')
+                    crypto_markets.append(market)
+                
+                if len(crypto_markets) >= limit:
+                    break
+            
+            if len(crypto_markets) >= limit:
+                break
+        
+        if crypto_markets:
+            print(f"Found {len(crypto_markets)} crypto up/down markets with volume > 0")
+        else:
+            print("No crypto up/down markets found matching regex")
+        
+        return crypto_markets
+
     def get_markets(self, category: Optional[str] = None, limit: int = 100) -> List[Dict]:
         """
         Get all available markets or filter by category
@@ -30,123 +169,6 @@ class MarketDataProvider:
         response.raise_for_status()
         return response.json()
 
-    def get_15m_crypto_markets(self, limit: int = 100) -> List[Dict]:
-        """
-        Get crypto markets that expire in approximately 15 minutes (15M markets)
-        :param limit: Number of markets to return
-        :return: List of 15M crypto-related market dictionaries
-        """
-        # Calculate time window for 15-minute expiry
-        now = datetime.now(timezone.utc)
-        # Look for markets expiring between 1 and 16 minutes from now
-        end_date_min = now + timedelta(minutes=1)
-        end_date_max = now + timedelta(minutes=16)
-
-        # Format as ISO 8601 strings
-        end_date_min_str = end_date_min.strftime("%Y-%m-%dT%H:%M:%SZ")
-        end_date_max_str = end_date_max.strftime("%Y-%m-%dT%H:%M:%SZ")
-
-        # Query Polymarket API for markets expiring in this window
-        params = {
-            'active': 'true',
-            'closed': 'false',
-            'archived': 'false',
-            'end_date_min': end_date_min_str,
-            'end_date_max': end_date_max_str,
-            'limit': limit
-        }
-
-        response = requests.get(f"{self.gamma_api_base}/markets", params=params)
-        response.raise_for_status()
-        markets = response.json()
-
-        # Filter for crypto-related markets only
-        crypto_markets = []
-        for market in markets:
-            if self._is_crypto_market(market):
-                crypto_markets.append(market)
-
-        return crypto_markets
-
-    def _is_crypto_market(self, market: Dict) -> bool:
-        """
-        Check if a market is crypto-related
-        :param market: Market dictionary
-        :return: True if crypto-related, False otherwise
-        """
-        question = market.get('question', '').lower()
-        description = market.get('description', '').lower()
-        category = market.get('category', '').lower()
-
-        # Check if the market is in a crypto-related category (highest priority)
-        is_crypto_category = category in ['crypto', 'defi', 'bitcoin', 'ethereum', 'altcoins']
-        if is_crypto_category:
-            return True
-
-        # Check for crypto asset names with word boundary matching
-        crypto_assets = [
-            'bitcoin', 'ethereum', 'btc', 'eth', 'solana', 'sol', 'cardano', 'ada',
-            'ripple', 'xrp', 'dogecoin', 'doge', 'polkadot', 'dot', 'litecoin', 'ltc',
-            'bitcoin cash', 'bch', 'bnb', 'binance coin', 'chainlink', 'link',
-            'polygon', 'matic', 'shiba', 'shib', 'tron', 'trx', 'monero', 'xmr',
-            'stellar', 'xlm', 'vechain', 'vnx', 'zcash', 'zec', 'algorand', 'algo'
-        ]
-
-        # Check for crypto asset names with financial/trading terms
-        for asset in crypto_assets:
-            asset_pattern = r'\b' + re.escape(asset) + r'\b'
-            if re.search(asset_pattern, question) or re.search(asset_pattern, description):
-                # Check for 15M crypto market patterns (e.g., "Bitcoin Up or Down")
-                crypto_15m_phrases = [
-                    'up or down', 'up/down', 'price up or down', 'higher or lower',
-                    'increase or decrease', 'above or below', 'price target',
-                    'close above', 'close below', 'direction', 'movement'
-                ]
-                if any(phrase.lower() in question.lower() for phrase in crypto_15m_phrases):
-                    return True
-
-                # Look for financial/trading related terms that are specifically related to crypto
-                # Use individual words with word boundaries to avoid false positives
-                crypto_financial_words = [
-                    'price', 'value', 'worth', 'market', 'trading', 'trade',
-                    'reach', 'hit', 'target', 'close', 'end', 'finish', 'settle',
-                    'increase', 'decrease', 'above', 'below', 'higher', 'lower',
-                    'volume', 'cap', 'token', 'coin', 'crypto', 'usd', 'dollar'
-                ]
-
-                combined_text = question + " " + description
-                # Check if any financial word appears (with word boundaries)
-                for word in crypto_financial_words:
-                    word_pattern = r'\b' + re.escape(word) + r'\b'
-                    if re.search(word_pattern, combined_text):
-                        # Make sure it's not just the crypto name itself
-                        # For example, "bitcoin" is in crypto_assets list, so ignore if it's just that
-                        if word.lower() not in [asset.lower() for asset in crypto_assets]:
-                            return True
-
-        # Check for specific crypto exchanges or platforms with word boundaries
-        crypto_exchanges = ['coinbase', 'binance', 'kraken', 'ftx', 'huobi', 'kucoin', 'gate.io']
-        for exchange in crypto_exchanges:
-            exchange_pattern = r'\b' + re.escape(exchange) + r'\b'
-            if re.search(exchange_pattern, question) or re.search(exchange_pattern, description):
-                return True
-
-        # Check for DeFi/Blockchain specific terms
-        defi_blockchain_terms = [
-            'defi', 'decentralized finance', 'blockchain', 'nft', 'web3', 'smart contract',
-            'tokenomics', 'staking', 'yield farming', 'liquidity', 'dex', 'amm',
-            'lp token', 'governance', 'dao', 'erc-20', 'erc-721',
-            'layer 2', 'scaling', 'gas fee', 'transaction fee', 'mining',
-            'proof of stake', 'proof of work', 'validator', 'node', 'wallet'
-        ]
-        combined_text = question + " " + description
-        for term in defi_blockchain_terms:
-            term_pattern = r'\b' + re.escape(term) + r'\b'
-            if re.search(term_pattern, combined_text):
-                return True
-
-        return False
-
     def get_market_by_id(self, market_id: str) -> Dict:
         """
         Get a specific market by its ID
@@ -160,7 +182,7 @@ class MarketDataProvider:
 
     def get_order_book(self, token_id: str) -> Dict:
         """
-        Get the order book for a specific token
+        Get order book for a specific token
         :param token_id: The token ID for which to get the order book
         :return: Order book data
         """
@@ -170,7 +192,7 @@ class MarketDataProvider:
 
     def get_current_price(self, token_id: str) -> float:
         """
-        Get the current price for a specific token
+        Get current price for a specific token
         :param token_id: The token ID for which to get the price
         :return: Current price
         """
@@ -186,37 +208,9 @@ class MarketDataProvider:
         :param limit: Number of markets to return
         :return: List of crypto-related market dictionaries
         """
-        # If 15M markets requested, use the dedicated method
+        # If 15M markets requested, use the new method
         if use_15m_only:
-            return self.get_15m_crypto_markets(limit)
-
-        # Otherwise, get all markets and filter for crypto
-        all_markets = self.get_markets(limit=1000)
-
-        crypto_markets = []
-        for market in all_markets:
-            if self._is_crypto_market(market):
-                crypto_markets.append(market)
-
-        return crypto_markets
-
-    def get_market_prices(self, market_id: str) -> Dict[str, float]:
-        """
-        Get current prices for both YES and NO outcomes of a market
-        :param market_id: The market ID
-        :return: Dictionary with YES and NO prices
-        """
-        market_details = self.get_market_by_id(market_id)
-
-        prices = {'yes': 0.0, 'no': 0.0}
-
-        if 'outcomes' in market_details and 'prices' in market_details:
-            outcomes = market_details['outcomes']
-            raw_prices = market_details['prices']
-
-            # Convert raw prices to floats
-            if len(outcomes) >= 2 and len(raw_prices) >= 2:
-                prices['yes'] = float(raw_prices[0])
-                prices['no'] = float(raw_prices[1])
-
-        return prices
+            return self.get_crypto_up_down_markets(limit)
+        
+        # For non-15m, return empty list (not used in main app)
+        return []

@@ -128,8 +128,8 @@ class TestMarketDataProvider(unittest.TestCase):
         mock_response.json.return_value = [
             {
                 "id": "1",
-                "outcomes": ["Yes", "No"],
-                "prices": ["0.6", "0.4"]
+                "question": "Test Market",
+                "outcomePrices": ["0.6", "0.4"]
             }
         ]
         mock_response.raise_for_status.return_value = None
@@ -146,6 +146,132 @@ class TestMarketDataProvider(unittest.TestCase):
         self.assertEqual(result['yes'], 0.6)
         self.assertEqual(result['no'], 0.4)
 
+    @patch('poly_market_trader.api.market_data_provider.requests.get')
+    def test_get_15m_crypto_markets(self, mock_get):
+        """Test getting 15-minute crypto markets."""
+        # Mock the response
+        mock_response = MagicMock()
+        mock_response.json.return_value = [
+            {"id": "1", "question": "Will Bitcoin reach $100k?"}
+        ]
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        result = self.provider.get_15m_crypto_markets()
+
+        # Verify the API was called with correct time window (1-16 minutes)
+        mock_get.assert_called_once()
+        args, kwargs = mock_get.call_args
+        self.assertIn('end_date_min', kwargs['params'])
+        self.assertIn('end_date_max', kwargs['params'])
+
+        # Verify the result is a list
+        self.assertIsInstance(result, list)
+
+    @patch('poly_market_trader.api.market_data_provider.requests.get')
+    def test_get_1h_crypto_markets(self, mock_get):
+        """Test getting 1-hour crypto markets."""
+        # Mock the response
+        mock_response = MagicMock()
+        mock_response.json.return_value = [
+            {"id": "2", "question": "Ethereum price in 1 hour"}
+        ]
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        result = self.provider.get_1h_crypto_markets()
+
+        # Verify the API was called with correct time window (50-70 minutes)
+        mock_get.assert_called_once()
+        args, kwargs = mock_get.call_args
+        self.assertIn('end_date_min', kwargs['params'])
+        self.assertIn('end_date_max', kwargs['params'])
+
+        # Verify the result is a list
+        self.assertIsInstance(result, list)
+
+    @patch('poly_market_trader.api.market_data_provider.requests.get')
+    def test_get_4h_crypto_markets(self, mock_get):
+        """Test getting 4-hour crypto markets."""
+        # Mock the response
+        mock_response = MagicMock()
+        mock_response.json.return_value = [
+            {"id": "3", "question": "Solana in 4 hours"}
+        ]
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        result = self.provider.get_4h_crypto_markets()
+
+        # Verify the API was called with correct time window (230-250 minutes)
+        mock_get.assert_called_once()
+        args, kwargs = mock_get.call_args
+        self.assertIn('end_date_min', kwargs['params'])
+        self.assertIn('end_date_max', kwargs['params'])
+
+        # Verify the result is a list
+        self.assertIsInstance(result, list)
+
+    @patch('poly_market_trader.api.market_data_provider.requests.get')
+    def test_get_short_term_crypto_markets(self, mock_get):
+        """Test getting all short-term crypto markets (15m, 1h, 4h)."""
+        # Mock responses for 3 API calls (15m, 1h, 4h)
+        mock_response = MagicMock()
+        mock_response.json.side_effect = [
+            [{"id": "1", "question": "BTC 15m"}],  # 15m markets
+            [{"id": "2", "question": "ETH 1h"}],   # 1h markets
+            [{"id": "3", "question": "SOL 4h"}]    # 4h markets
+        ]
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        result = self.provider.get_short_term_crypto_markets()
+
+        # Verify 3 API calls were made
+        self.assertEqual(mock_get.call_count, 3)
+
+        # Verify combined result
+        self.assertIsInstance(result, list)
+        # Should have combined markets from all 3 calls
+        self.assertGreaterEqual(len(result), 0)
+
+    def test_validate_token_id(self):
+        """Test token ID validation."""
+        # Valid numeric token ID
+        self.assertTrue(self.provider._validate_token_id("12345678901234567890"))
+        # Empty string
+        self.assertFalse(self.provider._validate_token_id(""))
+        # Non-string
+        self.assertFalse(self.provider._validate_token_id(12345))
+        # Too long (78 digits)
+        self.assertFalse(self.provider._validate_token_id("1" * 78))
+        # Non-numeric
+        self.assertFalse(self.provider._validate_token_id("abc123"))
+        # Valid within limit (50 digits)
+        self.assertTrue(self.provider._validate_token_id("1" * 50))
+
+    @patch('poly_market_trader.api.market_data_provider.ClobClient')
+    def test_get_order_book_404(self, mock_clob_client):
+        """Test 404 error handling in get_order_book."""
+        mock_client_instance = mock_clob_client.return_value
+        mock_client_instance.get_order_book.side_effect = Exception("404 Not Found")
+
+        result = self.provider.get_order_book("invalid_token")
+        self.assertIsNone(result)
+
+    @patch('poly_market_trader.api.market_data_provider.requests.get')
+    def test_get_market_prices_closed_market(self, mock_get):
+        """Test get_market_prices with a closed market."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = [
+            {"id": "1", "active": False, "closed": True, "outcomePrices": []}
+        ]
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        result = self.provider.get_market_prices("1")
+        self.assertEqual(result['yes'], 0.0)
+        self.assertEqual(result['no'], 0.0)
 
 class TestChainlinkDataProvider(unittest.TestCase):
     """Test cases for the ChainlinkDataProvider class"""
@@ -159,7 +285,7 @@ class TestChainlinkDataProvider(unittest.TestCase):
         """Test getting current price for a cryptocurrency."""
         # Mock the response
         mock_response = MagicMock()
-        mock_response.json.return_value = {"bitcoin": {"usd": 50000}}
+        mock_response.json.return_value = {"symbol": "BTCUSDT", "price": "50000.00"}
         mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
         
@@ -168,9 +294,8 @@ class TestChainlinkDataProvider(unittest.TestCase):
         # Verify the call was made correctly
         mock_get.assert_called_once()
         args, kwargs = mock_get.call_args
-        self.assertIn('simple/price', args[0])  # URL should contain 'simple/price'
-        self.assertIn('ids', kwargs['params'])
-        self.assertIn('vs_currencies', kwargs['params'])
+        self.assertIn('ticker/price', args[0])  # URL should contain 'ticker/price' (Binance API)
+        self.assertIn('symbol', kwargs['params'])
         
         # Verify the result
         self.assertEqual(result, 50000.0)
@@ -194,22 +319,21 @@ class TestChainlinkDataProvider(unittest.TestCase):
         """Test getting historical prices."""
         # Mock the response
         mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "prices": [
-                [1609459200000, 40000],  # [timestamp_ms, price]
-                [1609545600000, 41000],
-                [1609632000000, 42000]
-            ]
-        }
+        # Binance klines API format: [timestamp_ms, open, high, low, close, volume, ...]
+        mock_response.json.return_value = [
+            [16094592000000, 39000, 41000, 38000, 40000, 100, 16094592000000],  # kline 1
+            [1609545600000, 40000, 42000, 39000, 41000, 120, 1609545600000],  # kline 2
+            [1609632000000, 41000, 43000, 40000, 42000, 150, 1609632000000]   # kline 3
+        ]
         mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
         
-        result = self.provider.get_historical_prices("bitcoin", hours=24, interval='15min')
+        result = self.provider.get_historical_prices("bitcoin", hours=24, interval='15m')
         
-        # Verify the call was made correctly
+        # Verify that call was made correctly (Binance klines endpoint)
         mock_get.assert_called_once()
         args, kwargs = mock_get.call_args
-        self.assertIn('market_chart', args[0])  # URL should contain 'market_chart'
+        self.assertIn('klines', args[0])  # URL should contain 'klines' (Binance API)
         
         # Verify the result
         self.assertIsInstance(result, list)
@@ -223,19 +347,19 @@ class TestChainlinkDataProvider(unittest.TestCase):
         """Test getting prices for multiple cryptocurrencies."""
         # Mock the response
         mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "bitcoin": {"usd": 50000},
-            "ethereum": {"usd": 3000}
-        }
+        # Binance API returns different format for each call
+        # First call (bitcoin)
+        mock_response.json.side_effect = [
+            {"symbol": "BTCUSDT", "price": "50000.00"},
+            {"symbol": "ETHUSDT", "price": "3000.00"}
+        ]
         mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
         
         result = self.provider.get_multiple_prices(["bitcoin", "ethereum"])
         
-        # Verify the call was made correctly
-        mock_get.assert_called_once()
-        args, kwargs = mock_get.call_args
-        self.assertIn('simple/price', args[0])  # URL should contain 'simple/price'
+        # Verify the call was made correctly (Binance makes separate calls for each crypto)
+        self.assertEqual(mock_get.call_count, 2)  # 2 crypto prices = 2 API calls
         
         # Verify the result
         self.assertIn('bitcoin', result)

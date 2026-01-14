@@ -53,10 +53,16 @@ class TestBetSettlement(unittest.TestCase):
         """
         print("\n=== Testing PROBLEM 6: Bet History Empty ===")
         
-        # Verify bet_history.json doesn't exist initially
+        # Verify bet_history.json exists (auto-created by BetTracker) and is empty initially
         bet_history_file = os.path.join(self.storage_dir, 'bet_history.json')
-        self.assertFalse(os.path.exists(bet_history_file), 
-                        "bet_history.json should not exist initially")
+        self.assertTrue(os.path.exists(bet_history_file),
+                       "bet_history.json should exist (auto-created by BetTracker)")
+        
+        # Verify file is empty initially
+        with open(bet_history_file, 'r') as f:
+            data = json.load(f)
+        self.assertEqual(len(data.get('bets', [])), 0,
+                        "bet_history.json should have 0 bets initially")
         
         # Create a bet that ended 10 minutes ago (ready for settlement)
         past_time = datetime.now(timezone.utc) - timedelta(minutes=15)

@@ -19,4 +19,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-CMD ["uvicorn", "poly_market_trader.web.api_server:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the application
+# We use 'main.py --web' to start the application in web mode
+CMD ["python", "main.py", "--web", "--host", "0.0.0.0", "--web-port", "8000"]

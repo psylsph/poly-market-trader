@@ -1,13 +1,14 @@
 from ..models.portfolio import Portfolio
 from ..api.market_data_provider import MarketDataProvider
 from ..api.chainlink_data_provider import ChainlinkDataProvider
+from ..api.websocket_client import PolymarketWebSocketClient
 from ..services.order_executor import OrderExecutor
 from ..services.market_monitor import MarketMonitor
 from ..models.trade import MarketDirection, TradeType
 from ..config.settings import DEFAULT_INITIAL_BALANCE, CACHE_DURATION, CRYPTO_KEYWORDS
 from ..storage.portfolio_storage import PortfolioStorage
 from ..storage.bet_tracker import BetTracker
-from ..ui.dashboard_simple import PortfolioDashboard, BetHistoryDashboard
+from ..ui.dashboard_simple import PortfolioDashboard, BetHistoryDashboard, MonitoringStatusDashboard
 from ..ui.live_monitor import LiveMonitor
 from ..analytics.combined_dashboard import CombinedDashboard
 from ..analytics.offer_tracker import OfferTracker
@@ -15,6 +16,8 @@ from ..analytics.statistics_aggregator import StatisticsAggregator
 from decimal import Decimal
 from typing import Dict, List, Tuple, Optional, Callable
 from datetime import datetime, timezone
+import asyncio
+import threading
 import time
 
 
@@ -26,6 +29,7 @@ class PaperTrader:
         self.bet_tracker = BetTracker()
         self.portfolio_dashboard = PortfolioDashboard()
         self.bet_history_dashboard = BetHistoryDashboard()
+        self.monitoring_dashboard = MonitoringStatusDashboard()
         self.offer_tracker = OfferTracker()
         self.statistics_aggregator = StatisticsAggregator()
         
@@ -60,6 +64,13 @@ class PaperTrader:
         self.last_cache_update = 0
         self.cache_duration = CACHE_DURATION
         self.use_15m_only = True  # Default to 15M crypto markets
+        
+        # WebSocket client for real-time data
+        self.ws_client = None
+        self.ws_monitor = None
+        self.ws_loop = None
+        self.ws_thread = None
+        self.is_ws_monitoring = False
     
     def reset_portfolio(self, initial_balance: Decimal = None) -> None:
         """
@@ -90,7 +101,17 @@ class PaperTrader:
             print("Refreshing crypto markets...")
             # Use provided value or instance default
             fetch_15m = use_15m_only if use_15m_only is not None else self.use_15m_only
-            self.crypto_markets_cache = self.market_data.get_crypto_markets(use_15m_only=fetch_15m)
+            markets = self.market_data.get_crypto_markets(use_15m_only=fetch_15m)
+            
+            # Fetch prices for each market
+            for market in markets:
+                market_id = market['id']
+                prices = self.market_data.get_market_prices(market_id)
+                market['yes_price'] = prices['yes']
+                market['no_price'] = prices['no']
+                market['has_prices'] = prices['yes'] > 0 or prices['no'] > 0
+            
+            self.crypto_markets_cache = markets
             self.last_cache_update = current_time
     
     def get_crypto_markets(self, use_15m_only: bool = True):
@@ -226,26 +247,8 @@ class PaperTrader:
             'eth': 'ethereum',
             'solana': 'solana',
             'sol': 'solana',
-            'cardano': 'cardano',
-            'ada': 'cardano',
             'ripple': 'ripple',
-            'xrp': 'ripple',
-            'dogecoin': 'dogecoin',
-            'doge': 'dogecoin',
-            'polkadot': 'polkadot',
-            'dot': 'polkadot',
-            'litecoin': 'litecoin',
-            'ltc': 'litecoin',
-            'bitcoin cash': 'bitcoin-cash',
-            'bch': 'bitcoin-cash',
-            'bnb': 'bnb',
-            'binance coin': 'bnb',
-            'chainlink': 'chainlink',
-            'link': 'chainlink',
-            'polygon': 'polygon',
-            'matic': 'polygon',
-            'defi': 'defi',
-            'decentralized finance': 'defi'
+            'xrp': 'ripple'
         }
 
         for phrase, crypto_name in crypto_mappings.items():
@@ -311,25 +314,33 @@ class PaperTrader:
                       f"Current vs SMA: {indicators.get('price_sma_ratio', 0):.2f}")
 
         # Determine the outcome based on Chainlink analysis
-        # This is a simplified approach - in reality, you'd have more sophisticated logic
+        # STRATEGY: Mean Reversion (Consistent with MarketMonitor)
+        # Bullish -> Expect pullback -> Bet NO
+        # Bearish -> Expect bounce -> Bet YES
+        
+        volatility = 0.0
+        if indicators:
+            if timeframe == '15min':
+                volatility = indicators.get('volatility_15min', 0.0)
+            else:
+                volatility = indicators.get('volatility', 0.0)
+        
         if trend == 'bullish':
-            outcome = MarketDirection.YES
-            # For 15-minute timeframe, use volatility as confidence indicator
-            if timeframe == '15min':
-                volatility = indicators.get('volatility_15min', 0)
-                # Higher volatility might indicate stronger trend in short term
-                confidence = 0.7 if volatility > 2.0 else 0.6
-            else:
-                confidence = 0.7 if indicators.get('current_price', 0) < indicators.get('sma', 0) else 0.6
-        elif trend == 'bearish':
             outcome = MarketDirection.NO
-            if timeframe == '15min':
-                volatility = indicators.get('volatility_15min', 0)
-                confidence = 0.7 if volatility > 2.0 else 0.6
+            # High volatility increases confidence in reversal
+            if volatility > 0.1:
+                confidence = 0.7
             else:
-                confidence = 0.7 if indicators.get('current_price', 0) > indicators.get('sma', 0) else 0.6
+                confidence = 0.55
+        elif trend == 'bearish':
+            outcome = MarketDirection.YES
+            # High volatility increases confidence in reversal
+            if volatility > 0.1:
+                confidence = 0.7
+            else:
+                confidence = 0.55
         else:  # neutral
-            outcome = MarketDirection.YES  # Default to YES for positive events
+            outcome = MarketDirection.YES  # Default to YES if no strong signal
             confidence = 0.4  # Lower confidence for neutral trend
 
         # Only place bet if confidence is above threshold
@@ -445,9 +456,20 @@ class PaperTrader:
 
         print(f"\n=== Available Crypto Markets (showing first {limit}) ===")
         for i, market in enumerate(crypto_markets[:limit]):
-            print(f"{i+1}. {market['question'][:60]}{'...' if len(market['question']) > 60 else ''}")
-            print(f"    ID: {market['id'][:8]}... | YES Price: {market.get('yes_price', 'N/A')} | "
-                  f"NO Price: {market.get('no_price', 'N/A')}")
+            question = market['question'][:60] + ('...' if len(market['question']) > 60 else '')
+            
+            # Show price status
+            has_prices = market.get('has_prices', False)
+            yes_price = market.get('yes_price', 0)
+            no_price = market.get('no_price', 0)
+            
+            if has_prices:
+                price_str = f"YES: ${yes_price:.2f} | NO: ${no_price:.2f}"
+            else:
+                price_str = "⏳ Awaiting pricing..."
+            
+            print(f"{i+1}. {question}")
+            print(f"    ID: {market['id'][:8]}... | {price_str}")
         print("=" * 50)
 
     def get_chainlink_analysis(self, crypto_name: str, timeframe: str = '15min') -> Dict:
@@ -603,7 +625,8 @@ class PaperTrader:
         """
         Skip all pending offers
         """
-        self.offer_tracker.update_offer_action(offer_id, 'skipped')
+        for offer in self.offer_tracker.get_pending_offers():
+            self.offer_tracker.update_offer_action(offer.get('offer_id'), 'skipped')
         print(f"\n  📭  Skipped all pending offers")
     
     def accept_all_qualifying_offers(self, min_confidence: float = 0.6) -> None:
@@ -637,3 +660,123 @@ class PaperTrader:
         )
         
         dashboard.start_dashboard()
+    
+    def start_realtime_monitoring(self) -> bool:
+        """
+        Start real-time market monitoring via WebSocket for instant arbitrage detection
+        :return: True if started successfully, False otherwise
+        """
+        if self.is_ws_monitoring:
+            print("Real-time monitoring is already running")
+            return False
+        
+        print("🚀 Starting real-time WebSocket monitoring...")
+        
+        def run_ws_loop():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(self._ws_monitor_loop())
+            except Exception as e:
+                print(f"WebSocket loop error: {e}")
+            finally:
+                loop.close()
+        
+        self.ws_thread = threading.Thread(target=run_ws_loop, daemon=True)
+        self.ws_thread.start()
+        
+        # Wait a moment for connection
+        time.sleep(1)
+        
+        if self.ws_client and self.ws_client.is_connected:
+            self.is_ws_monitoring = True
+            print("✅ Real-time WebSocket monitoring active!")
+            return True
+        else:
+            print("❌ Failed to connect to WebSocket")
+            return False
+    
+    async def _ws_monitor_loop(self):
+        """Internal WebSocket monitoring loop using FastMarketMonitor"""
+        from ..api.websocket_client import FastMarketMonitor
+        
+        self.ws_monitor = FastMarketMonitor(
+            portfolio=self.portfolio,
+            order_executor=self.order_executor,
+            market_data=self.market_data
+        )
+        
+        success = await self.ws_monitor.start()
+        
+        if success:
+            # Store reference to ws_client for price fetching
+            self.ws_client = self.ws_monitor.ws_client
+        else:
+            self.ws_monitor = None
+    
+    def _handle_ws_arbitrage(self, arbitrage_info: dict):
+        """Handle arbitrage detected via WebSocket"""
+        token_id = arbitrage_info.get('token_id', '')[:20]
+        yes_price = arbitrage_info.get('yes_price', 0)
+        no_price = arbitrage_info.get('no_price', 0)
+        profit = arbitrage_info.get('profit', 0)
+        
+        print(f"\n🎯 REALTIME ARBITRAGE: {token_id}...")
+        print(f"   YES={yes_price:.4f}, NO={no_price:.4f}, Profit={profit:.1f}%")
+        
+        # Note: Actual order placement is handled by FastMarketMonitor
+        # This is just for logging in PaperTrader
+    
+    def stop_realtime_monitoring(self):
+        """Stop real-time WebSocket monitoring"""
+        if not self.is_ws_monitoring:
+            print("Real-time monitoring is not running")
+            return
+        
+        print("🛑 Stopping real-time WebSocket monitoring...")
+        
+        if self.ws_monitor:
+            asyncio.run(self.ws_monitor.stop())
+            self.ws_monitor = None
+        
+        if self.ws_client:
+            self.ws_client = None
+        
+        self.is_ws_monitoring = False
+        print("✅ Real-time monitoring stopped")
+    
+    def get_realtime_prices(self) -> Dict[str, Dict]:
+        """Get current prices from WebSocket connection"""
+        if self.ws_client and self.ws_client.is_connected:
+            return self.ws_client.get_all_prices()
+        return {}
+    
+    def get_monitoring_status(self) -> Dict:
+        """Get status of all monitoring systems"""
+        return {
+            'polling_active': self.market_monitor.is_monitoring if self.market_monitor else False,
+            'websocket_active': self.is_ws_monitoring,
+            'websocket_connected': self.ws_client.is_connected if self.ws_client else False,
+            'active_bets': len(self.bet_tracker.get_active_bets()) if self.bet_tracker else 0
+        }
+    
+    def print_monitoring_status(self) -> None:
+        """Print monitoring system status using the dashboard"""
+        status = self.get_monitoring_status()
+        self.monitoring_dashboard.display_status(status)
+    
+    def print_portfolio_status(self) -> None:
+        """Print complete portfolio and monitoring status"""
+        portfolio_summary = self.get_portfolio_summary()
+        active_bets = self.get_active_bets()
+        
+        self.portfolio_dashboard.display_portfolio(
+            portfolio_summary=portfolio_summary,
+            positions=[],
+            active_bets_count=len(active_bets)
+        )
+        
+        self.print_monitoring_status()
+        
+        if active_bets:
+            self.portfolio_dashboard.display_active_bets(active_bets)

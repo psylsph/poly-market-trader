@@ -21,8 +21,18 @@ class BetTracker:
         self._ensure_data_dir()
     
     def _ensure_data_dir(self):
-        """Create data directory if it doesn't exist"""
+        """Create data directory and initialize files if they don't exist"""
         self.storage_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Initialize active_bets.json if missing
+        if not self.active_bets_file.exists():
+            self._save_json_file(self.active_bets_file, {"version": "1.0", "bets": []})
+            print(f"Initialized {self.active_bets_file}")
+            
+        # Initialize bet_history.json if missing
+        if not self.bet_history_file.exists():
+            self._save_json_file(self.bet_history_file, {"version": "1.0", "bets": []})
+            print(f"Initialized {self.bet_history_file}")
     
     def add_active_bet(self, bet_info: Dict) -> str:
         """

@@ -102,3 +102,53 @@ class BetHistoryDashboard:
             print(f"  {i}. {question:<33} {outcome:<8} {result_text:<10} ${payout:>10.2f} ${pnl_color:<12} {date_str}")
         
         print("=" * 60 + "\n")
+
+
+class MonitoringStatusDashboard:
+    """Dashboard for monitoring system status"""
+    
+    def display_status(self, status: Dict) -> None:
+        """
+        Display monitoring system status
+        
+        Args:
+            status: Dict with keys:
+                - polling_active: bool
+                - websocket_active: bool
+                - websocket_connected: bool
+                - active_bets: int
+        """
+        polling_active = status.get('polling_active', False)
+        ws_active = status.get('websocket_active', False)
+        ws_connected = status.get('websocket_connected', False)
+        active_bets = status.get('active_bets', 0)
+        
+        # Status indicators
+        polling_indicator = "🟢 RUNNING" if polling_active else "🔴 STOPPED"
+        ws_indicator = "🟢 CONNECTED" if ws_connected else "🔴 DISCONNECTED"
+        ws_status = "🟢 ACTIVE" if ws_active else "🔴 INACTIVE"
+        
+        print("\n" + "=" * 60)
+        print("  MONITORING STATUS")
+        print("=" * 60)
+        print(f"  ┌─────────────────────────────────────────────────────┐")
+        print(f"  │  Polling Monitor:  {polling_indicator:<28}│")
+        print(f"  │  WebSocket:        {ws_indicator:<28}│")
+        print(f"  │  WS Monitoring:    {ws_status:<28}│")
+        print(f"  │  Active Bets:      {active_bets:<28}│")
+        print(f"  └─────────────────────────────────────────────────────┘")
+        print("=" * 60)
+        
+        # Show status details
+        print("\n  System Details:")
+        if polling_active:
+            print("    • Polling monitor checks every 15 minutes")
+        if ws_active and ws_connected:
+            print("    • WebSocket provides real-time arbitrage detection")
+            print("    • Instant order execution on arbitrage opportunities")
+        elif ws_active:
+            print("    • WebSocket connecting...")
+        else:
+            print("    • Run start_realtime_monitoring() to enable WebSocket")
+        
+        print()

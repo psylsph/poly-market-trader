@@ -269,13 +269,13 @@ class TestPaperTrader(unittest.TestCase):
                 confidence_threshold=0.5
             )
             
-            # Verify the order was placed with YES outcome (bullish)
+            # Verify the order was placed with NO outcome (bullish)
             self.assertTrue(result)
             mock_place_order.assert_called_once()
-            # Check that the outcome was YES (since trend is bullish)
+            # Check that the outcome was NO (since trend is bullish - mean reversion expects pullback)
             args, kwargs = mock_place_order.call_args
             # The outcome parameter is the second positional argument (index 1)
-            self.assertEqual(kwargs["outcome"], MarketDirection.YES)  # outcome parameter
+            self.assertEqual(kwargs["outcome"], MarketDirection.NO)  # outcome parameter
     
     @patch.object(PaperTrader, 'get_chainlink_analysis')
     @patch.object(PaperTrader, 'get_crypto_markets')
@@ -304,13 +304,13 @@ class TestPaperTrader(unittest.TestCase):
                 confidence_threshold=0.5
             )
             
-            # Verify the order was placed with NO outcome (bearish)
+            # Verify the order was placed with YES outcome (bearish)
             self.assertTrue(result)
             mock_place_order.assert_called_once()
-            # Check that the outcome was NO (since trend is bearish)
+            # Check that the outcome was YES (since trend is bearish - mean reversion expects bounce)
             args, kwargs = mock_place_order.call_args
             # The outcome parameter is the second positional argument (index 1)
-            self.assertEqual(kwargs["outcome"], MarketDirection.NO)  # outcome parameter
+            self.assertEqual(kwargs["outcome"], MarketDirection.YES)  # outcome parameter
     
     @patch.object(PaperTrader, 'get_chainlink_analysis')
     @patch.object(PaperTrader, 'get_crypto_markets')

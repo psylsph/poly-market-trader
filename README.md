@@ -169,6 +169,27 @@ print(f"Total Value: ${summary['total_value']:.2f}")
 print(f"P&L: ${summary['pnl']:.2f}")
 ```
 
+## Running with Docker
+
+You can run the application in a containerized environment using Docker.
+
+1. **Build and start the container:**
+   ```bash
+   docker-compose up -d --build
+   ```
+
+2. **View logs:**
+   ```bash
+   docker-compose logs -f
+   ```
+
+3. **Stop the container:**
+   ```bash
+   docker-compose down
+   ```
+
+The web interface will be available at `http://localhost:8000`. Data (portfolio, bets) is persisted in the `data/` directory on your host machine.
+
 ## Configuration
 
 The application can be configured by modifying `poly_market_trader/config/settings.py`:

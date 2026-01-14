@@ -67,8 +67,6 @@ async def dashboard_update_loop():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
-    global connected_clients
-    
     task = None
     
     try:
@@ -235,21 +233,21 @@ async def root():
                     </div>
                     
                     <div class="card" style="margin-top: 20px;">
-                        <h2>📋 Active Bets ({{ filteredActiveBets.length }}) <small style="color: #888; font-size: 12px; margin-left: 10px;">(Last 2 Hours)</small></h2>
+                        <h2>📋 Active Bets ({{ filteredActiveBets.length }})</h2>
                         <div class="scrollable-table">
                             <table class="table" v-if="filteredActiveBets.length">
                                 <thead><tr><th>Market</th><th>Outcome</th><th>Quantity</th><th>Cost</th><th>Ends</th></tr></thead>
-                                <tbody>
-                                    <tr v-for="bet in filteredActiveBets" :key="bet.bet_id">
-                                        <td>{{ bet.question?.substring(0, 50) }}...</td>
-                                        <td><span :class="bet.outcome === 'YES' ? 'win' : 'loss'">{{ bet.outcome }}</span></td>
-                                        <td>{{ bet.quantity?.toFixed(2) }}</td>
-                                        <td>${{ bet.cost?.toFixed(2) }}</td>
-                                        <td>{{ formatTimeLeft(bet.market_end_time) }}</td>
-                                    </tr>
-                                </tbody>
+                                  <tbody>
+                                      <tr v-for="bet in filteredActiveBets" :key="bet.bet_id">
+                                          <td><a :href="'https://polymarket.com/event/' + (bet.market_slug || bet.market_id)" target="_blank" style="color: #00d9ff; text-decoration: none;">{{ cleanQuestion(bet.question)?.substring(0, 50) }}... ↗</a></td>
+                                          <td><span :class="bet.outcome === 'YES' ? 'win' : 'loss'">{{ bet.outcome }}</span></td>
+                                          <td>{{ bet.quantity?.toFixed(2) }}</td>
+                                          <td>${{ bet.cost?.toFixed(2) }}</td>
+                                          <td>{{ formatTimeLeft(bet.market_end_time) }}</td>
+                                      </tr>
+                                  </tbody>
                             </table>
-                            <p v-else style="color: #888; padding: 10px;">No active bets in the last 2 hours</p>
+                            <p v-else style="color: #888; padding: 10px;">No active bets</p>
                         </div>
                     </div>
                     
@@ -276,16 +274,16 @@ async def root():
                 <div v-if="currentView === 'markets'">
                     <div class="card">
                         <h2>📈 Available Crypto Markets</h2>
-                        <table class="table">
-                            <thead><tr><th>Market</th><th>YES</th><th>NO</th></tr></thead>
-                            <tbody>
-                                <tr v-for="market in markets" :key="market.id">
-                                    <td>{{ market.question?.substring(0, 70) }}</td>
-                                    <td :class="market.yes_price > 0.5 ? 'win' : ''">{{ market.yes_price?.toFixed(2) || 'N/A' }}</td>
-                                    <td :class="market.no_price < 0.5 ? 'win' : ''">{{ market.no_price?.toFixed(2) || 'N/A' }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                         <table class="table">
+                             <thead><tr><th>Market</th><th>YES</th><th>NO</th></tr></thead>
+                             <tbody>
+                                 <tr v-for="market in markets" :key="market.id">
+                                     <td><a :href="'https://polymarket.com/event/' + (market.slug || market.id)" target="_blank" style="color: #00d9ff; text-decoration: none;">{{ cleanQuestion(market.question)?.substring(0, 70) }} ↗</a></td>
+                                     <td :class="market.yes_price > 0.5 ? 'win' : ''">{{ market.yes_price?.toFixed(2) || 'N/A' }}</td>
+                                     <td :class="market.no_price < 0.5 ? 'win' : ''">{{ market.no_price?.toFixed(2) || 'N/A' }}</td>
+                                 </tr>
+                             </tbody>
+                         </table>
                     </div>
                 </div>
                 
@@ -295,15 +293,15 @@ async def root():
                         <h2>📜 Bet History</h2>
                         <table class="table">
                             <thead><tr><th>Date</th><th>Market</th><th>Outcome</th><th>Result</th><th>P&L</th></tr></thead>
-                            <tbody>
-                                <tr v-for="bet in history" :key="bet.bet_id">
-                                    <td>{{ formatDate(bet.settled_at || bet.placed_at) }}</td>
-                                    <td>{{ bet.question?.substring(0, 40) }}...</td>
-                                    <td>{{ bet.outcome }}</td>
-                                    <td :class="bet.status === 'won' ? 'win' : bet.status === 'lost' ? 'loss' : 'pending'">{{ bet.status }}</td>
-                                    <td :class="bet.profit_loss >= 0 ? 'win' : 'loss'">{{ bet.profit_loss >= 0 ? '+' : '' }}${{ bet.profit_loss?.toFixed(2) }}</td>
-                                </tr>
-                            </tbody>
+                             <tbody>
+                                 <tr v-for="bet in history" :key="bet.bet_id">
+                                     <td>{{ formatDate(bet.settled_at || bet.placed_at) }}</td>
+                                     <td><a :href="'https://polymarket.com/event/' + (bet.market_slug || bet.market_id)" target="_blank" style="color: #00d9ff; text-decoration: none;">{{ cleanQuestion(bet.question)?.substring(0, 40) }}... ↗</a></td>
+                                     <td>{{ bet.outcome }}</td>
+                                     <td :class="bet.status === 'won' ? 'win' : bet.status === 'lost' ? 'loss' : 'pending'">{{ bet.status }}</td>
+                                     <td :class="bet.profit_loss >= 0 ? 'win' : 'loss'">{{ bet.profit_loss >= 0 ? '+' : '' }}${{ bet.profit_loss?.toFixed(2) }}</td>
+                                 </tr>
+                             </tbody>
                         </table>
                     </div>
                 </div>
@@ -336,13 +334,30 @@ async def root():
                     last_error: null
                 });
                 
-                // Filter active bets to show only those placed in the last 2 hours
+                // Sort active bets by end time (nearest to finish at the top)
                 const filteredActiveBets = computed(() => {
                     if (!activeBets.value.length) return [];
-                    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
-                    return activeBets.value.filter(bet => {
-                        const betTime = new Date(bet.placed_at);
-                        return betTime > twoHoursAgo;
+                    
+                    // Clone array to avoid mutating source
+                    const bets = [...activeBets.value];
+                    
+                    // Sort by end time (nearest first)
+                    return bets.sort((a, b) => {
+                        const farFuture = 8640000000000000;
+                        
+                        let timeA = farFuture;
+                        if (a.market_end_time) {
+                            const dateA = new Date(a.market_end_time);
+                            if (!isNaN(dateA.getTime())) timeA = dateA.getTime();
+                        }
+                        
+                        let timeB = farFuture;
+                        if (b.market_end_time) {
+                            const dateB = new Date(b.market_end_time);
+                            if (!isNaN(dateB.getTime())) timeB = dateB.getTime();
+                        }
+                        
+                        return timeA - timeB;
                     });
                 });
                 
@@ -455,6 +470,11 @@ async def root():
                     return date.toLocaleTimeString();
                 };
                 
+                const cleanQuestion = (question) => {
+                    if (!question) return '';
+                    return question.replace(/\\s*-\\s*\\d+\\s*minute(s)?/gi, '');
+                };
+                
                 onMounted(() => {
                     loadDashboard();
                     connectWS();
@@ -469,7 +489,7 @@ async def root():
                 return {
                     loading, currentView, autoBetRunning, settling, portfolio,
                     activeBets, filteredActiveBets, history, markets, tokenStats, settlementStatus,
-                    toggleAutoBet, settleBets, formatTimeLeft, formatDate, formatSettlementTime
+                    toggleAutoBet, settleBets, formatTimeLeft, formatDate, formatSettlementTime, cleanQuestion
                 };
             }
         }).mount('#app');
