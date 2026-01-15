@@ -11,6 +11,7 @@ import argparse
 import sys
 import time
 from decimal import Decimal
+from datetime import datetime, timedelta, timezone
 
 from poly_market_trader.services.paper_trader import PaperTrader
 from poly_market_trader.models.trade import MarketDirection
@@ -57,6 +58,8 @@ parser.add_argument('--history-limit', type=int, default=10,
                     help='Limit number of bets to show in history (default: 10)')
 parser.add_argument('--history-filter', type=str, choices=['won', 'lost'],
                     help='Filter history by status')
+parser.add_argument('--all-history', action='store_true',
+                    help='Show all bet history (overrides 24h default)')
 parser.add_argument('--monitor-status', action='store_true',
                     help='Show auto-betting monitoring status')
 parser.add_argument('--active-bets', action='store_true',
@@ -106,7 +109,14 @@ def main(args=None):
     elif args.bet_history:
         limit = args.history_limit if hasattr(args, 'history_limit') else None
         status_filter = args.history_filter if hasattr(args, 'history_filter') else None
-        history = trader.get_bet_history(limit, status_filter)
+        
+        # Default to last 24h unless --all-history is specified
+        start_time = None
+        if not hasattr(args, 'all_history') or not args.all_history:
+            start_time = datetime.now(timezone.utc) - timedelta(hours=24)
+            print(f"Showing bet history from last 24 hours (use --all-history for full history)...")
+            
+        history = trader.get_bet_history(limit, status_filter, start_time)
         trader.bet_history_dashboard.display_history(history)
 
     elif args.list_markets:

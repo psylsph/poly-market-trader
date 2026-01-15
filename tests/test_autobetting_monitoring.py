@@ -154,11 +154,17 @@ class TestMarketMonitoring(unittest.TestCase):
         self.chainlink_data.get_volatility_15min.return_value = 0.5
         self.chainlink_data.get_technical_indicators.return_value = {'rsi': 50.0}
         
+        # Mock BetTracker
+        self.bet_tracker = Mock()
+        self.bet_tracker.get_active_bets.return_value = []
+        
         self.monitor = MarketMonitor(
             portfolio=self.portfolio,
             market_data=self.market_data,
             chainlink_data=self.chainlink_data,
-            order_executor=self.order_executor
+            order_executor=self.order_executor,
+            bet_tracker=self.bet_tracker,
+            use_llm=False
         )
     
     def test_initial_monitoring_state(self):
@@ -277,37 +283,24 @@ class TestMarketMonitoring(unittest.TestCase):
             "description": "Ethereum price prediction market"
         }
         
-        # Mock the chainlink data methods
-        with patch.object(self.monitor.chainlink_data, 'get_current_price') as mock_get_price:
-            mock_get_price.return_value = 4000.0
-            
-            with patch.object(self.monitor.chainlink_data, 'get_recent_trend_15min') as mock_get_trend:
-                mock_get_trend.return_value = 'bearish'
-                
-                with patch.object(self.monitor.chainlink_data, 'get_volatility_15min') as mock_get_volatility:
-                    mock_get_volatility.return_value = 2.5  # High volatility
-                    
-                    with patch.object(self.monitor.chainlink_data, 'get_technical_indicators') as mock_get_indicators:
-                        # Mock RSI: 25 (Oversold) - confirms mean reversion (Bet YES)
-                        mock_get_indicators.return_value = {'rsi': 25.0}
-                        
-                        with patch.object(self.monitor.market_data, 'get_market_prices') as mock_get_market_prices:
-                            # Correct format: flat dict with 'yes' and 'no' keys
-                            mock_get_market_prices.return_value = {"yes": 0.4, "no": 0.6}
-                            
-                            # Mock the order executor
-                            with patch.object(self.monitor.order_executor, 'place_buy_order') as mock_place_order:
-                                mock_place_order.return_value = MagicMock()
-                                
-                                # Call the method
-                                self.monitor._analyze_and_bet(market)
-                                
-                                # Verify a bet was placed
-                                mock_place_order.assert_called_once()
-                                # Verify it was a YES bet (bearish trend + mean reversion)
-                                args, kwargs = mock_place_order.call_args
-                                # The outcome parameter is the second positional argument (index 1)
-                                self.assertEqual(kwargs["outcome"], MarketDirection.YES)
+        # Configure mocks directly instead of nesting patches
+        self.monitor.chainlink_data.get_current_price.return_value = 4000.0
+        self.monitor.chainlink_data.get_recent_trend_15min.return_value = 'bearish'
+        self.monitor.chainlink_data.get_volatility_15min.return_value = 2.5
+        self.monitor.chainlink_data.get_technical_indicators.return_value = {'rsi': 25.0}
+        self.monitor.market_data.get_market_prices.return_value = {"yes": 0.4, "no": 0.6}
+        
+        # Mock the order executor
+        self.monitor.order_executor.place_buy_order.return_value = MagicMock()
+        
+        # Call the method
+        self.monitor._analyze_and_bet(market)
+        
+        # Verify a bet was placed
+        self.monitor.order_executor.place_buy_order.assert_called_once()
+        # Verify it was a YES bet (bearish trend + mean reversion)
+        args, kwargs = self.monitor.order_executor.place_buy_order.call_args
+        self.assertEqual(kwargs["outcome"], MarketDirection.YES)
     
     @patch.object(MarketMonitor, '_extract_crypto_name')
     def test_analyze_and_bet_neutral_trend_skip(self, mock_extract_crypto_name):

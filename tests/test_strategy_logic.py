@@ -324,7 +324,10 @@ class TestMarketMonitorIntegration(unittest.TestCase):
         market_data = MarketDataProvider()
         chainlink_data = ChainlinkDataProvider()
         order_executor = OrderExecutor(portfolio)
-        bet_tracker = BetTracker()
+        
+        # Mock BetTracker to avoid loading real files
+        bet_tracker = MagicMock()
+        bet_tracker.get_active_bets.return_value = []
         
         # Mock the API responses
         # Mock market prices: YES=0.50, NO=0.50

@@ -251,11 +251,12 @@ class BetTracker:
         
         return settled
     
-    def get_bet_history(self, limit: int = None, status_filter: str = None) -> List[Dict]:
+    def get_bet_history(self, limit: int = None, status_filter: str = None, start_time: datetime = None) -> List[Dict]:
         """
         Get bet history with optional filtering
         :param limit: Maximum number of bets to return (None = all)
         :param status_filter: Filter by status ('won', 'lost', 'active')
+        :param start_time: Only return bets settled after this time
         :return: List of bet dictionaries
         """
         data = self._load_json_file(self.bet_history_file)
@@ -264,6 +265,29 @@ class BetTracker:
         # Filter by status if specified
         if status_filter:
             bets = [b for b in bets if b.get("status") == status_filter]
+            
+        # Filter by time if specified
+        if start_time:
+            filtered_bets = []
+            for bet in bets:
+                settled_at = bet.get("settled_at")
+                if settled_at:
+                    try:
+                        # Handle timezone-aware vs naive
+                        settled_time = datetime.fromisoformat(settled_at)
+                        if settled_time.tzinfo is None:
+                            settled_time = settled_time.replace(tzinfo=timezone.utc)
+                        
+                        if start_time.tzinfo is None:
+                            start_time = start_time.replace(tzinfo=timezone.utc)
+                            
+                        if settled_time >= start_time:
+                            filtered_bets.append(bet)
+                    except (ValueError, TypeError):
+                        # Keep if time parsing fails (safe fallback) or decide to skip?
+                        # Let's skip invalid times to be safe
+                        pass
+            bets = filtered_bets
         
         # Sort by settled_at (most recent first)
         bets.sort(key=lambda x: x.get("settled_at", ""), reverse=True)

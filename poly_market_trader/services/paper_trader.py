@@ -595,14 +595,15 @@ class PaperTrader:
             activity_log_callback=lambda: self.market_monitor.active_bets
         )
     
-    def get_bet_history(self, limit: int = None, status_filter: str = None) -> List[Dict]:
+    def get_bet_history(self, limit: int = None, status_filter: str = None, start_time: datetime = None) -> List[Dict]:
         """
         Get bet history with optional filtering
         :param limit: Maximum number of bets to return
         :param status_filter: Filter by status ('won', 'lost')
+        :param start_time: Only return bets settled after this time
         :return: List of settled bets
         """
-        return self.bet_tracker.get_bet_history(limit, status_filter)
+        return self.bet_tracker.get_bet_history(limit, status_filter, start_time)
     
     def get_pending_offers(self) -> List[Dict]:
         """

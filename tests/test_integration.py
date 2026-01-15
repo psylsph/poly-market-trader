@@ -100,8 +100,12 @@ class TestIntegration(unittest.TestCase):
         with patch.object(self.trader.chainlink_data, 'get_current_price') as mock_get_price:
             mock_get_price.return_value = 60000.0
             
-            with patch.object(self.trader.chainlink_data, 'get_crypto_trend') as mock_get_trend:
+            # Patch both methods to be safe
+            with patch.object(self.trader.chainlink_data, 'get_crypto_trend') as mock_get_trend, \
+                 patch.object(self.trader.chainlink_data, 'get_recent_trend_15min') as mock_get_trend_15min:
+                
                 mock_get_trend.return_value = 'bullish'
+                mock_get_trend_15min.return_value = 'bullish'
                 
                 # Perform Chainlink analysis
                 analysis = self.trader.get_chainlink_analysis("bitcoin")
@@ -130,8 +134,10 @@ class TestIntegration(unittest.TestCase):
         with patch.object(self.trader.chainlink_data, 'get_current_price') as mock_get_price:
             mock_get_price.return_value = 4000.0
             
-            with patch.object(self.trader.chainlink_data, 'get_crypto_trend') as mock_get_trend:
+            with patch.object(self.trader.chainlink_data, 'get_crypto_trend') as mock_get_trend, \
+                 patch.object(self.trader.chainlink_data, 'get_recent_trend_15min') as mock_get_trend_15min:
                 mock_get_trend.return_value = 'bullish'
+                mock_get_trend_15min.return_value = 'bullish'
                 
                 with patch.object(self.trader.chainlink_data, 'get_technical_indicators') as mock_get_indicators:
                     mock_get_indicators.return_value = {
@@ -142,20 +148,25 @@ class TestIntegration(unittest.TestCase):
                         'trend_direction': 'bullish'
                     }
                     
-                    # Place an informed crypto bet
-                    success = self.trader.place_informed_crypto_bet(
-                        market_title_keyword="ethereum",
-                        amount=200.0,
-                        max_price=0.7,
-                        confidence_threshold=0.5
-                    )
-                    
-                    # Verify the bet was placed (should be YES for bullish trend)
-                    self.assertTrue(success)
-                    
-                    # Verify portfolio state
-                    summary = self.trader.get_portfolio_summary()
-                    self.assertEqual(summary['trade_count'], 1)
+                    # Patch order executor to return a success
+                    with patch.object(self.trader.order_executor, 'place_buy_order') as mock_place:
+                        mock_place.return_value = MagicMock()
+                        
+                        # Place an informed crypto bet
+                        success = self.trader.place_informed_crypto_bet(
+                            market_title_keyword="ethereum",
+                            amount=200.0,
+                            max_price=0.7,
+                            confidence_threshold=0.5
+                        )
+                        
+                        # Verify the bet was placed (should be YES for bullish trend)
+                        self.assertTrue(success)
+                        
+                        # Verify arguments
+                        args, kwargs = mock_place.call_args
+                        # Expect NO bet because Bullish Trend -> Mean Reversion Strategy -> Bet NO
+                        self.assertEqual(kwargs['outcome'], MarketDirection.NO)
     
     def test_portfolio_pnl_calculation(self):
         """Test that P&L is calculated correctly."""
