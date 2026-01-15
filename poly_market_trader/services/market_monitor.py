@@ -459,8 +459,9 @@ class MarketMonitor:
                     print()
 
                     # Determine outcome based on price movement
-                    self._settle_bet(bet_info, end_time)
-                    bets_to_remove.append(bet_info)
+                    result = self._settle_bet(bet_info, end_time)
+                    if result and result.get('success'):
+                        bets_to_remove.append(bet_info)
                 else:
                     # Market still open
                     time_remaining = 300 - time_since_close
@@ -491,7 +492,7 @@ class MarketMonitor:
         """
         # Delegate settlement to BetTracker to ensure consistency
         if self.bet_tracker:
-            self.bet_tracker.settle_bet(
+            return self.bet_tracker.settle_bet(
                 bet_id=bet_info.get('bet_id'),
                 chainlink_data=self.chainlink_data,
                 portfolio=self.portfolio,
@@ -499,6 +500,7 @@ class MarketMonitor:
             )
         else:
             print("  ❌ BetTracker not available, cannot settle bet")
+            return {"success": False, "error": "BetTracker not available"}
     
     def _update_portfolio_values(self):
         """Update portfolio with current market prices"""

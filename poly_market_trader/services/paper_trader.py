@@ -533,7 +533,22 @@ class PaperTrader:
 
     def get_active_bets(self) -> List[Dict]:
         """Get list of active bets being monitored by auto-betting system"""
-        return self.bet_tracker.get_active_bets()
+        bets = self.bet_tracker.get_active_bets()
+        
+        # Backfill market_slug if missing (fix for legacy bets)
+        for bet in bets:
+            if not bet.get('market_slug'):
+                market_id = bet.get('market_id')
+                if not market_id:
+                    continue
+                    
+                # Try to find in cache first
+                for m in self.crypto_markets_cache:
+                    if str(m.get('id')) == str(market_id):
+                        bet['market_slug'] = m.get('slug', '')
+                        break
+        
+        return bets
     
     def settle_bets(self) -> Dict:
         """

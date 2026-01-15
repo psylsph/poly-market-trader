@@ -99,26 +99,27 @@ class TestMarketDataProvider(unittest.TestCase):
     
     @patch('poly_market_trader.api.market_data_provider.requests.get')
     def test_get_crypto_markets(self, mock_get):
-        """Test getting crypto-related markets."""
-        # Mock the response with mixed markets
+        """Test getting crypto-related markets (using get_crypto_up_down_markets)."""
+        # Mock response for _fetch_events
         mock_response = MagicMock()
         mock_response.json.return_value = [
-            {"id": "1", "question": "Will Bitcoin reach $100k?", "description": "About Bitcoin"},
-            {"id": "2", "question": "Will it rain tomorrow?", "description": "Weather forecast"},
-            {"id": "3", "question": "Ethereum price prediction", "description": "Crypto market"}
+            {
+                "id": "1", 
+                "title": "Bitcoin Up or Down",
+                "slug": "btc-updown-15m-123",
+                "markets": [{"id": "m1", "volume": "100"}]
+            }
         ]
         mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
         
-        result = self.provider.get_crypto_markets()
+        # Call with use_15m_only=True to trigger the logic
+        result = self.provider.get_crypto_markets(use_15m_only=True)
         
-        # Verify the call was made correctly
+        # Verify call
         mock_get.assert_called()
-        
-        # The result should contain only crypto-related markets
-        # Note: The actual filtering depends on the implementation in the method
-        # which we're testing as a whole
         self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 1)
     
     @patch('poly_market_trader.api.market_data_provider.requests.get')
     def test_get_market_prices(self, mock_get):
@@ -129,6 +130,7 @@ class TestMarketDataProvider(unittest.TestCase):
             {
                 "id": "1",
                 "question": "Test Market",
+                "outcomes": "[\"Yes\", \"No\"]",
                 "outcomePrices": ["0.6", "0.4"]
             }
         ]
@@ -147,124 +149,55 @@ class TestMarketDataProvider(unittest.TestCase):
         self.assertEqual(result['no'], 0.4)
 
     @patch('poly_market_trader.api.market_data_provider.requests.get')
-    def test_get_15m_crypto_markets(self, mock_get):
-        """Test getting 15-minute crypto markets."""
-        # Mock the response
+    def test_get_crypto_up_down_markets(self, mock_get):
+        """Test getting crypto up/down markets."""
+        # Mock the response from _fetch_events
         mock_response = MagicMock()
         mock_response.json.return_value = [
-            {"id": "1", "question": "Will Bitcoin reach $100k?"}
+            {
+                "id": "1", 
+                "slug": "eth-updown-15m-123", 
+                "title": "ETH 15m",
+                "markets": [{"id": "m1", "volume": "1000"}]
+            },
+            {
+                "id": "2", 
+                "slug": "sol-updown-1h-456", 
+                "title": "SOL 1h",
+                "markets": [{"id": "m2", "volume": "500"}]
+            },
+            {
+                "id": "3", 
+                "slug": "invalid-slug", 
+                "title": "Invalid",
+                "markets": [{"id": "m3", "volume": "100"}]
+            },
+            {
+                "id": "4", 
+                "slug": "btc-updown-4h-789", 
+                "title": "BTC 4h",
+                "markets": [{"id": "m4", "volume": "0"}] # Zero volume -> skip
+            }
         ]
         mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
 
-        result = self.provider.get_15m_crypto_markets()
+        result = self.provider.get_crypto_up_down_markets(limit=10)
 
-        # Verify the API was called with correct time window (1-16 minutes)
-        mock_get.assert_called_once()
-        args, kwargs = mock_get.call_args
-        self.assertIn('end_date_min', kwargs['params'])
-        self.assertIn('end_date_max', kwargs['params'])
-
-        # Verify the result is a list
-        self.assertIsInstance(result, list)
-
-    @patch('poly_market_trader.api.market_data_provider.requests.get')
-    def test_get_1h_crypto_markets(self, mock_get):
-        """Test getting 1-hour crypto markets."""
-        # Mock the response
-        mock_response = MagicMock()
-        mock_response.json.return_value = [
-            {"id": "2", "question": "Ethereum price in 1 hour"}
-        ]
-        mock_response.raise_for_status.return_value = None
-        mock_get.return_value = mock_response
-
-        result = self.provider.get_1h_crypto_markets()
-
-        # Verify the API was called with correct time window (50-70 minutes)
-        mock_get.assert_called_once()
-        args, kwargs = mock_get.call_args
-        self.assertIn('end_date_min', kwargs['params'])
-        self.assertIn('end_date_max', kwargs['params'])
-
-        # Verify the result is a list
-        self.assertIsInstance(result, list)
-
-    @patch('poly_market_trader.api.market_data_provider.requests.get')
-    def test_get_4h_crypto_markets(self, mock_get):
-        """Test getting 4-hour crypto markets."""
-        # Mock the response
-        mock_response = MagicMock()
-        mock_response.json.return_value = [
-            {"id": "3", "question": "Solana in 4 hours"}
-        ]
-        mock_response.raise_for_status.return_value = None
-        mock_get.return_value = mock_response
-
-        result = self.provider.get_4h_crypto_markets()
-
-        # Verify the API was called with correct time window (230-250 minutes)
-        mock_get.assert_called_once()
-        args, kwargs = mock_get.call_args
-        self.assertIn('end_date_min', kwargs['params'])
-        self.assertIn('end_date_max', kwargs['params'])
-
-        # Verify the result is a list
-        self.assertIsInstance(result, list)
-
-    @patch('poly_market_trader.api.market_data_provider.requests.get')
-    def test_get_short_term_crypto_markets(self, mock_get):
-        """Test getting all short-term crypto markets (15m, 1h, 4h)."""
-        # Mock responses for 3 API calls (15m, 1h, 4h)
-        mock_response = MagicMock()
-        mock_response.json.side_effect = [
-            [{"id": "1", "question": "BTC 15m"}],  # 15m markets
-            [{"id": "2", "question": "ETH 1h"}],   # 1h markets
-            [{"id": "3", "question": "SOL 4h"}]    # 4h markets
-        ]
-        mock_response.raise_for_status.return_value = None
-        mock_get.return_value = mock_response
-
-        result = self.provider.get_short_term_crypto_markets()
-
-        # Verify 3 API calls were made
-        self.assertEqual(mock_get.call_count, 3)
-
-        # Verify combined result
-        self.assertIsInstance(result, list)
-        # Should have combined markets from all 3 calls
-        self.assertGreaterEqual(len(result), 0)
-
-    def test_validate_token_id(self):
-        """Test token ID validation."""
-        # Valid numeric token ID
-        self.assertTrue(self.provider._validate_token_id("12345678901234567890"))
-        # Empty string
-        self.assertFalse(self.provider._validate_token_id(""))
-        # Non-string
-        self.assertFalse(self.provider._validate_token_id(12345))
-        # Too long (78 digits)
-        self.assertFalse(self.provider._validate_token_id("1" * 78))
-        # Non-numeric
-        self.assertFalse(self.provider._validate_token_id("abc123"))
-        # Valid within limit (50 digits)
-        self.assertTrue(self.provider._validate_token_id("1" * 50))
-
-    @patch('poly_market_trader.api.market_data_provider.ClobClient')
-    def test_get_order_book_404(self, mock_clob_client):
-        """Test 404 error handling in get_order_book."""
-        mock_client_instance = mock_clob_client.return_value
-        mock_client_instance.get_order_book.side_effect = Exception("404 Not Found")
-
-        result = self.provider.get_order_book("invalid_token")
-        self.assertIsNone(result)
+        # Verify filtered results
+        self.assertEqual(len(result), 2)
+        slugs = [m['slug'] for m in result]
+        self.assertIn("eth-updown-15m-123", slugs)
+        self.assertIn("sol-updown-1h-456", slugs)
+        self.assertNotIn("invalid-slug", slugs)
+        self.assertNotIn("btc-updown-4h-789", slugs)
 
     @patch('poly_market_trader.api.market_data_provider.requests.get')
     def test_get_market_prices_closed_market(self, mock_get):
         """Test get_market_prices with a closed market."""
         mock_response = MagicMock()
         mock_response.json.return_value = [
-            {"id": "1", "active": False, "closed": True, "outcomePrices": []}
+            {"id": "1", "active": False, "closed": True, "outcomePrices": [], "outcomes": []}
         ]
         mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response

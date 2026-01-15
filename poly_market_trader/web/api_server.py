@@ -275,12 +275,10 @@ async def root():
                     <div class="card">
                         <h2>📈 Available Crypto Markets</h2>
                          <table class="table">
-                             <thead><tr><th>Market</th><th>YES</th><th>NO</th></tr></thead>
+                             <thead><tr><th>Market</th></tr></thead>
                              <tbody>
                                  <tr v-for="market in markets" :key="market.id">
                                      <td><a :href="'https://polymarket.com/event/' + (market.slug || market.id)" target="_blank" style="color: #00d9ff; text-decoration: none;">{{ cleanQuestion(market.question)?.substring(0, 70) }} ↗</a></td>
-                                     <td :class="market.yes_price > 0.5 ? 'win' : ''">{{ market.yes_price?.toFixed(2) || 'N/A' }}</td>
-                                     <td :class="market.no_price < 0.5 ? 'win' : ''">{{ market.no_price?.toFixed(2) || 'N/A' }}</td>
                                  </tr>
                              </tbody>
                          </table>

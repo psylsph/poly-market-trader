@@ -369,7 +369,7 @@ class TraderService:
             active_bets = self.get_active_bets()
             bet_history = self.get_bet_history(limit=10)
             token_stats = self.get_token_statistics()
-            markets = self.get_markets(limit=10)
+            markets = self.get_markets(limit=100)
             
             # Add settlement status
             settlement_status = {

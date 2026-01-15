@@ -50,6 +50,7 @@ class BetTracker:
         bet_record = {
             "bet_id": bet_id,
             "market_id": bet_info.get("market_id"),
+            "market_slug": bet_info.get("market_slug", ""),  # Add market_slug
             "question": bet_info.get("question", ""),
             "crypto_name": bet_info.get("crypto_name", ""),
             "outcome": bet_info.get("outcome"),
