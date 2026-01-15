@@ -73,14 +73,25 @@ parser.add_argument('--stop-realtime', action='store_true',
                     help='Stop real-time WebSocket monitoring')
 parser.add_argument('--realtime-status', action='store_true',
                     help='Show real-time WebSocket prices and status')
+parser.add_argument('--use-llm', action='store_true',
+                    help='Force enable Local LLM integration (overrides settings)')
+parser.add_argument('--no-llm', action='store_true',
+                    help='Force disable Local LLM integration (overrides settings)')
 
 def main(args=None):
     """Main entry point for the CLI"""
     if args is None:
         args = parser.parse_args()
 
+    # Determine LLM override
+    use_llm = None
+    if hasattr(args, 'use_llm') and args.use_llm:
+        use_llm = True
+    elif hasattr(args, 'no_llm') and args.no_llm:
+        use_llm = False
+
     # Initialize paper trader
-    trader = PaperTrader(initial_balance=Decimal(str(args.balance)))
+    trader = PaperTrader(initial_balance=Decimal(str(args.balance)), use_llm=use_llm)
 
     # Handle different commands
     if args.reset_portfolio:

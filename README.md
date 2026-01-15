@@ -12,13 +12,18 @@ This application allows you to simulate betting on crypto-related markets on Pol
 - **Portfolio Tracking**: Track your virtual balance, positions, and P&L
 - **Risk Management**: Built-in risk controls to prevent overexposure
 - **Automated Betting**: Auto-place bets based on Chainlink analysis and confidence thresholds
+- **Local LLM Integration**: Uses local AI (Mistral/Nemotron via LMStudio) for deep market analysis and decision making
+- **Arbitrage Detection**: Automatically identifies and acts on arbitrage opportunities (YES + NO < $0.99)
+- **Active Position Management**: Automatically sells positions to take profit (>40%) or stop loss (<-50%)
 - **15-Minute Analysis**: Short-term technical analysis for quick trading decisions
 - **Continuous Monitoring**: Automatic market monitoring and betting in 15-minute intervals
+- **Smart Filtering**: Only trades on markets expiring within 90 minutes to ensure quick settlement
 
 ## Prerequisites
 
 - Python 3.7+
 - pip package manager
+- (Optional) [LMStudio](https://lmstudio.ai/) running locally for AI features
 
 ## Installation
 
@@ -30,11 +35,18 @@ This application allows you to simulate betting on crypto-related markets on Pol
 pip install -r requirements.txt
 ```
 
+4. (Optional) For AI features, start LMStudio server at `http://localhost:1234/v1`
+
 ## Usage
 
 ### Command Line Interface
 
 The application provides a command-line interface for various operations:
+
+#### Start Continuous Auto-Betting with AI
+```bash
+python main.py --start-monitoring --use-llm
+```
 
 #### Check Portfolio Status
 ```bash
@@ -199,19 +211,20 @@ The application can be configured by modifying `poly_market_trader/config/settin
 - `CRYPTO_KEYWORDS`: Keywords used to identify crypto-related markets
 - `MAX_POSITION_SIZE_PERCENT`: Maximum percentage of balance per position (default: 0.1)
 - `MAX_DAILY_RISK_PERCENT`: Maximum daily risk percentage (default: 0.05)
+- `ENABLE_LLM`: Enable local AI integration (default: False)
+- `LLM_BASE_URL`: URL for local LLM server (default: http://192.168.1.227:1234/v1)
 
 ## How It Works
 
 1. **Market Data**: The application fetches real market data from Polymarket APIs
 2. **Chainlink Integration**: Retrieves cryptocurrency price data from Chainlink-compatible sources
 3. **Technical Analysis**: Calculates trends, moving averages, and volatility metrics
-4. **15-Minute Analysis**: Performs short-term technical analysis for quick trading decisions
-5. **Continuous Monitoring**: Automatically monitors markets and places bets in 15-minute intervals
-6. **Crypto Filtering**: Markets are filtered based on crypto-related keywords
-7. **Decision Making**: Uses Chainlink data to inform betting decisions
-8. **Virtual Trading**: Trades are simulated using real prices but with virtual money
-9. **Position Management**: Tracks your positions and calculates P&L based on market movements
-10. **Portfolio Tracking**: Maintains your virtual balance and overall portfolio value
+4. **Smart Filtering**: Filters for markets ending in the next 90 minutes with active volume
+5. **AI Analysis**: Uses Local LLM to analyze market questions, sentiment, and technicals to provide "YES/NO/SKIP" decisions and stake sizing
+6. **Arbitrage**: Detects guaranteed profit opportunities where YES + NO price sum is less than $0.99
+7. **Virtual Trading**: Trades are simulated using real prices but with virtual money
+8. **Active Management**: Continuously monitors open positions and sells early if profit targets are hit or AI advises exit
+9. **Portfolio Tracking**: Maintains your virtual balance, active bets, and settlement history
 
 ## Risk Disclaimer
 
@@ -235,7 +248,6 @@ poly-market-trader/
 ├── main.py                 # Main application entry point
 ├── example_usage.py        # Example usage script
 ├── test_functionality.py   # Functionality tests
-├── SUMMARY.md              # Project summary
 ├── requirements.txt        # Python dependencies
 ├── poly_market_trader/     # Main package
 │   ├── __init__.py

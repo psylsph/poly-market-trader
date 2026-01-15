@@ -134,8 +134,42 @@ class MarketDataProvider:
                 except (ValueError, TypeError):
                     volume = 0.0
                 
-                # Only include markets with volume > 0
-                if volume > 0:
+                # Check timestamps to avoid betting too far in advance
+                # We only want markets ending within the next 90 minutes
+                # (15m duration + 75m lookahead)
+                end_date_str = market.get('endDate')
+                is_imminent = False
+                
+                if end_date_str:
+                    try:
+                        # Handle 'Z' manually if python < 3.11
+                        if end_date_str.endswith('Z'):
+                            end_date_str = end_date_str[:-1] + '+00:00'
+                        
+                        end_time = datetime.fromisoformat(end_date_str)
+                        now = datetime.now(timezone.utc)
+                        
+                        # Calculate time until end
+                        time_to_end = (end_time - now).total_seconds()
+                        
+                        # Filter:
+                        # 1. Must be in future (time_to_end > 0)
+                        # 2. Must be within 90 minutes (5400 seconds)
+                        if 0 < time_to_end <= 5400:
+                            is_imminent = True
+                        else:
+                            # Skip if too far in future or already passed
+                            continue
+                            
+                    except Exception as e:
+                        print(f"Error parsing date {end_date_str}: {e}")
+                        continue
+                else:
+                    # No date, skip to be safe
+                    continue
+
+                # Only include markets with volume > 0 AND are imminent
+                if volume > 0 and is_imminent:
                     market['title'] = event.get('title', '')
                     market['slug'] = event.get('slug', '')
                     market['event_id'] = event.get('id')

@@ -20,6 +20,8 @@ from poly_market_trader.services.order_executor import OrderExecutor
 from poly_market_trader.models.portfolio import Portfolio
 from poly_market_trader.models.trade import MarketDirection, TradeType
 from poly_market_trader.api.chainlink_data_provider import ChainlinkDataProvider
+from poly_market_trader.services.market_monitor import MarketMonitor
+from poly_market_trader.api.market_data_provider import MarketDataProvider
 
 
 class TestBetSettlement(unittest.TestCase):
@@ -37,14 +39,57 @@ class TestBetSettlement(unittest.TestCase):
         self.order_executor = OrderExecutor(self.portfolio)
         self.bet_tracker = BetTracker(storage_dir=self.storage_dir)
         
-        # Mock ChainlinkDataProvider
+        # Mock providers
         self.mock_chainlink = MagicMock(spec=ChainlinkDataProvider)
+        self.mock_market_data = MagicMock(spec=MarketDataProvider)
         
     def tearDown(self):
         """Clean up after each test"""
         if os.path.exists(self.test_dir):
             shutil.rmtree(self.test_dir)
-    
+            
+    def test_active_bets_persistence_on_restart(self):
+        """
+        Test that MarketMonitor loads active bets from storage on initialization.
+        This fixes the issue where restarting the bot causes it to lose track of bets.
+        """
+        print("\n=== Testing Active Bets Persistence on Restart ===")
+        
+        # 1. Create a bet in storage
+        bet_info = {
+            'market_id': 'persistence_test_1',
+            'question': 'Persistence Test Market',
+            'crypto_name': 'bitcoin',
+            'outcome': 'YES',
+            'quantity': 100.0,
+            'entry_price': 0.50,
+            'cost': 50.0,
+            'market_start_time': datetime.now(timezone.utc).isoformat(),
+            'market_end_time': (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+            'entry_crypto_price': 50000.0
+        }
+        self.bet_tracker.add_active_bet(bet_info)
+        
+        # Verify it's in storage
+        self.assertEqual(len(self.bet_tracker.get_active_bets()), 1)
+        
+        # 2. Initialize MarketMonitor
+        monitor = MarketMonitor(
+            portfolio=self.portfolio,
+            market_data=self.mock_market_data,
+            chainlink_data=self.mock_chainlink,
+            order_executor=self.order_executor,
+            bet_tracker=self.bet_tracker,
+            use_llm=False
+        )
+        
+        # 3. Verify MarketMonitor loaded the bet
+        self.assertEqual(len(monitor.active_bets), 1, 
+                        "MarketMonitor should load active bets from storage on init")
+        self.assertEqual(monitor.active_bets[0]['market_id'], 'persistence_test_1')
+        
+        print("✅ MarketMonitor correctly loads active bets from storage")
+
     def test_problem_6_bet_history_empty(self):
         """
         PROBLEM 6: Bet History table stays empty - no bets ever appear in history

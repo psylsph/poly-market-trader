@@ -50,10 +50,18 @@ flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statist
 ### Testing
 Use `unittest` for testing. Always run relevant tests before and after changes.
 
+**CRITICAL:** You MUST run tests and linting after every significant code change to ensure you haven't broken anything.
+
 ```bash
-# Run ALL tests
+# Run ALL tests (Required before finishing)
 python -m unittest discover -s tests
 
+# Run linting (Required before finishing)
+flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+```
+
+```bash
 # Run a SPECIFIC test file (Recommended for focused work)
 python -m unittest tests.test_api
 python -m unittest tests.test_services

@@ -21,3 +21,10 @@ CRYPTO_KEYWORDS = [
 # Risk management
 MAX_POSITION_SIZE_PERCENT = 0.1  # Max 10% of balance per position
 MAX_DAILY_RISK_PERCENT = 0.05  # Max 5% daily risk
+
+# LLM Configuration
+ENABLE_LLM = True  # Set to True to enable Local LLM features
+LLM_BASE_URL = "http://192.168.1.227:1234/v1"
+LLM_API_KEY = "lm-studio"
+LLM_MODEL_NANO = "nvidia/nemotron-3-nano"
+LLM_MODEL_REASONING = "mistralai/ministral-3-14b-reasoning"

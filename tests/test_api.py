@@ -100,6 +100,10 @@ class TestMarketDataProvider(unittest.TestCase):
     @patch('poly_market_trader.api.market_data_provider.requests.get')
     def test_get_crypto_markets(self, mock_get):
         """Test getting crypto-related markets (using get_crypto_up_down_markets)."""
+        # Calculate a valid future date for imminent check
+        from datetime import datetime, timedelta, timezone
+        future_date = (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat().replace('+00:00', 'Z')
+        
         # Mock response for _fetch_events
         mock_response = MagicMock()
         mock_response.json.return_value = [
@@ -107,7 +111,7 @@ class TestMarketDataProvider(unittest.TestCase):
                 "id": "1", 
                 "title": "Bitcoin Up or Down",
                 "slug": "btc-updown-15m-123",
-                "markets": [{"id": "m1", "volume": "100"}]
+                "markets": [{"id": "m1", "volume": "100", "endDate": future_date}]
             }
         ]
         mock_response.raise_for_status.return_value = None
@@ -151,6 +155,11 @@ class TestMarketDataProvider(unittest.TestCase):
     @patch('poly_market_trader.api.market_data_provider.requests.get')
     def test_get_crypto_up_down_markets(self, mock_get):
         """Test getting crypto up/down markets."""
+        # Calculate a valid future date for imminent check
+        from datetime import datetime, timedelta, timezone
+        future_date = (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat().replace('+00:00', 'Z')
+        far_future_date = (datetime.now(timezone.utc) + timedelta(hours=5)).isoformat().replace('+00:00', 'Z')
+
         # Mock the response from _fetch_events
         mock_response = MagicMock()
         mock_response.json.return_value = [
@@ -158,25 +167,31 @@ class TestMarketDataProvider(unittest.TestCase):
                 "id": "1", 
                 "slug": "eth-updown-15m-123", 
                 "title": "ETH 15m",
-                "markets": [{"id": "m1", "volume": "1000"}]
+                "markets": [{"id": "m1", "volume": "1000", "endDate": future_date}]
             },
             {
                 "id": "2", 
                 "slug": "sol-updown-1h-456", 
                 "title": "SOL 1h",
-                "markets": [{"id": "m2", "volume": "500"}]
+                "markets": [{"id": "m2", "volume": "500", "endDate": future_date}]
             },
             {
                 "id": "3", 
                 "slug": "invalid-slug", 
                 "title": "Invalid",
-                "markets": [{"id": "m3", "volume": "100"}]
+                "markets": [{"id": "m3", "volume": "100", "endDate": future_date}]
             },
             {
                 "id": "4", 
                 "slug": "btc-updown-4h-789", 
                 "title": "BTC 4h",
-                "markets": [{"id": "m4", "volume": "0"}] # Zero volume -> skip
+                "markets": [{"id": "m4", "volume": "0", "endDate": future_date}] # Zero volume -> skip
+            },
+            {
+                "id": "5", 
+                "slug": "btc-updown-15m-future", 
+                "title": "BTC 15m Future",
+                "markets": [{"id": "m5", "volume": "1000", "endDate": far_future_date}] # Too far in future -> skip
             }
         ]
         mock_response.raise_for_status.return_value = None
@@ -191,6 +206,7 @@ class TestMarketDataProvider(unittest.TestCase):
         self.assertIn("sol-updown-1h-456", slugs)
         self.assertNotIn("invalid-slug", slugs)
         self.assertNotIn("btc-updown-4h-789", slugs)
+        self.assertNotIn("btc-updown-15m-future", slugs)
 
     @patch('poly_market_trader.api.market_data_provider.requests.get')
     def test_get_market_prices_closed_market(self, mock_get):

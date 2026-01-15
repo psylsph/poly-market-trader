@@ -144,14 +144,27 @@ class BetTracker:
                 bet_record["status"] = "won"
                 
                 if order_executor:
-                    # Execute SELL trade at $1.00
-                    order_executor.execute_trade(
-                        market_id=bet_record["market_id"],
-                        outcome=MarketDirection(bet_record["outcome"]),
-                        quantity=bet_record["quantity"],
-                        price=1.0,
-                        trade_type=TradeType.SELL
-                    )
+                    try:
+                        # Convert outcome to Enum safely
+                        outcome_val = bet_record["outcome"]
+                        try:
+                            outcome_enum = MarketDirection(outcome_val)
+                        except ValueError:
+                            outcome_enum = MarketDirection(str(outcome_val).upper())
+                            
+                        # Execute SELL trade at $1.00
+                        order_executor.execute_trade(
+                            market_id=bet_record["market_id"],
+                            outcome=outcome_enum,
+                            quantity=bet_record["quantity"],
+                            price=1.0,
+                            trade_type=TradeType.SELL
+                        )
+                    except Exception as e:
+                        print(f"❌ Error executing sell trade: {e}")
+                        # Continue to update portfolio manually as fallback
+                        portfolio.update_balance(Decimal(str(bet_record["payout"])))
+                        portfolio.remove_position(bet_record["market_id"], bet_record["outcome"])
                 else:
                     # Legacy fallback: manual update
                     portfolio.update_balance(Decimal(str(bet_record["payout"])))
@@ -165,14 +178,25 @@ class BetTracker:
                 bet_record["status"] = "lost"
                 
                 if order_executor:
-                    # Execute SELL trade at $0.00
-                    order_executor.execute_trade(
-                        market_id=bet_record["market_id"],
-                        outcome=MarketDirection(bet_record["outcome"]),
-                        quantity=bet_record["quantity"],
-                        price=0.0,
-                        trade_type=TradeType.SELL
-                    )
+                    try:
+                        # Convert outcome to Enum safely
+                        outcome_val = bet_record["outcome"]
+                        try:
+                            outcome_enum = MarketDirection(outcome_val)
+                        except ValueError:
+                            outcome_enum = MarketDirection(str(outcome_val).upper())
+
+                        # Execute SELL trade at $0.00
+                        order_executor.execute_trade(
+                            market_id=bet_record["market_id"],
+                            outcome=outcome_enum,
+                            quantity=bet_record["quantity"],
+                            price=0.0,
+                            trade_type=TradeType.SELL
+                        )
+                    except Exception as e:
+                        print(f"❌ Error executing sell trade: {e}")
+                        portfolio.remove_position(bet_record["market_id"], bet_record["outcome"])
                 else:
                     # Legacy fallback: manual update
                     portfolio.remove_position(bet_record["market_id"], bet_record["outcome"])

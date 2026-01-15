@@ -24,7 +24,7 @@ import time
 class PaperTrader:
     """Main class for paper trading on Polymarket with crypto focus"""
 
-    def __init__(self, initial_balance: Decimal = None, auto_load: bool = True):
+    def __init__(self, initial_balance: Decimal = None, auto_load: bool = True, use_llm: Optional[bool] = None):
         self.storage = PortfolioStorage()
         self.bet_tracker = BetTracker()
         self.portfolio_dashboard = PortfolioDashboard()
@@ -53,13 +53,19 @@ class PaperTrader:
         self.market_data = MarketDataProvider()
         self.chainlink_data = ChainlinkDataProvider()
         self.order_executor = OrderExecutor(self.portfolio, storage=self.storage)
-        self.market_monitor = MarketMonitor(
-            portfolio=self.portfolio,
-            market_data=self.market_data,
-            chainlink_data=self.chainlink_data,
-            order_executor=self.order_executor,
-            bet_tracker=self.bet_tracker
-        )
+        
+        # Prepare MarketMonitor arguments
+        monitor_kwargs = {
+            'portfolio': self.portfolio,
+            'market_data': self.market_data,
+            'chainlink_data': self.chainlink_data,
+            'order_executor': self.order_executor,
+            'bet_tracker': self.bet_tracker
+        }
+        if use_llm is not None:
+            monitor_kwargs['use_llm'] = use_llm
+
+        self.market_monitor = MarketMonitor(**monitor_kwargs)
         self.crypto_markets_cache = []
         self.last_cache_update = 0
         self.cache_duration = CACHE_DURATION
