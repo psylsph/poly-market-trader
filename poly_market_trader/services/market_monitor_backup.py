@@ -23,7 +23,7 @@ class MarketMonitor:
         self.order_executor = order_executor
         self.is_monitoring = False
         self.monitor_thread = None
-        self.check_interval = 900  # 15 minutes in seconds
+        self.check_interval = 900  # 15 minutes in seconds (market scanning interval)
         self.active_bets = []  # Track active bets that need monitoring
     
     def start_monitoring(self, check_interval_seconds: int = 900):
@@ -113,7 +113,7 @@ class MarketMonitor:
         """Check for new betting opportunities based on Chainlink analysis"""
         print(f"[{time.strftime('%H:%M:%S')}] Checking for new betting opportunities...")
 
-        # Get 15M crypto markets (expiring in ~15 minutes)
+        # Get crypto up/down markets (15min, 1h, 4h timeframes)
         crypto_markets = self.market_data.get_crypto_markets(use_15m_only=True)
         
         if not crypto_markets:

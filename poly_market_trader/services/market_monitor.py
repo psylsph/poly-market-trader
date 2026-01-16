@@ -1,13 +1,14 @@
 import time
 import threading
 import json
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone, timedelta
 from ..models.trade import MarketDirection, Trade, TradeType
 from ..api.market_data_provider import MarketDataProvider
 from ..api.chainlink_data_provider import ChainlinkDataProvider
 from ..api.llm_provider import LLMProvider, MarketContext
 from ..services.order_executor import OrderExecutor
+from ..services.enhanced_order_executor import EnhancedOrderExecutor
 from ..models.portfolio import Portfolio
 from decimal import Decimal
 import logging
@@ -21,18 +22,27 @@ class MarketMonitor:
     Monitors crypto markets and automatically places bets based on Chainlink analysis
     """
     
-    def __init__(self, portfolio: Portfolio, market_data: MarketDataProvider, 
-                 chainlink_data: ChainlinkDataProvider, order_executor: OrderExecutor, 
-                 bet_tracker=None, use_llm: bool = settings.ENABLE_LLM):
+    def __init__(self, portfolio: Portfolio, market_data: MarketDataProvider,
+                 chainlink_data: ChainlinkDataProvider, order_executor: OrderExecutor,
+                 bet_tracker=None, use_llm: bool = settings.ENABLE_LLM,
+                 enhanced_order_executor: Optional[EnhancedOrderExecutor] = None):
         self.portfolio = portfolio
         self.market_data = market_data
         self.chainlink_data = chainlink_data
         self.order_executor = order_executor
+        self.enhanced_order_executor = enhanced_order_executor or EnhancedOrderExecutor(portfolio, bet_tracker)
         self.bet_tracker = bet_tracker
         self.is_monitoring = False
         self.monitor_thread = None
-        self.check_interval = 900  # 15 minutes in seconds
+        self.check_interval = 900  # 15 minutes in seconds (market scanning interval)
         self.active_bets = []  # Track active bets that need monitoring
+
+        # Risk management state
+        self.portfolio_start_balance = float(portfolio.current_balance)
+        self.daily_start_balance = float(portfolio.current_balance)
+        self.weekly_start_balance = float(portfolio.current_balance)
+        self.portfolio_peak_balance = float(portfolio.current_balance)
+        self.emergency_stop_triggered = False
         
         # Load active bets from storage if available
         if self.bet_tracker:
@@ -46,11 +56,13 @@ class MarketMonitor:
 
         self.use_llm = use_llm
         self.llm_provider = LLMProvider() if self.use_llm else None # Initialize LLM Provider only if enabled
-        
+
         if self.use_llm:
             print(f"🧠 Local LLM Integration Enabled (URL: {self.llm_provider.base_url})")
         else:
             print("🧠 Local LLM Integration Disabled")
+
+        print("🚀 Enhanced Order Executor Integrated" if enhanced_order_executor else "📋 Using Standard Order Executor")
 
     
     def start_monitoring(self, check_interval_seconds: int = 900):
@@ -91,7 +103,19 @@ class MarketMonitor:
                 self._show_active_bets_summary()
                 print()
 
-                # Check for new betting opportunities
+                # Check risk management limits
+                if self._check_drawdown_limits():
+                    print("⚠️ Risk limits triggered. Skipping trading activities this cycle.")
+                    print()
+                else:
+                    # Check for new betting opportunities
+                    self._check_for_opportunities()
+
+                # Check and settle resolved bets
+                self._check_and_settle_resolved_bets()
+
+                # Manage active positions (exit if profitable or risk limits hit)
+                self._manage_active_positions()
                 self._check_for_opportunities()
 
                 # Check and settle resolved bets
@@ -127,7 +151,13 @@ class MarketMonitor:
             print()
             for i, bet in enumerate(self.active_bets, 1):
                 market_id = bet['market_id']
-                outcome = bet['outcome'].value
+                # Determine outcome - handle both Enum and string types safely
+                outcome_val = bet['outcome']
+                if hasattr(outcome_val, 'value'):
+                    outcome = outcome_val.value
+                else:
+                    outcome = str(outcome_val)
+                    
                 quantity = bet['quantity']
                 entry_price = bet['entry_price']
                 question = bet['question'][:40]
@@ -146,7 +176,7 @@ class MarketMonitor:
         print("└─────────────────────────────────────────────────────────────────────────┘")
         print()
 
-        # Get 15M crypto markets (expiring in ~15 minutes)
+        # Get crypto up/down markets (15min, 1h, 4h timeframes)
         crypto_markets = self.market_data.get_crypto_markets(use_15m_only=True)
 
         if not crypto_markets:
@@ -169,22 +199,19 @@ class MarketMonitor:
     def _analyze_and_bet(self, market: Dict, index: int = 0):
         """Analyze a single market and place a bet if conditions are favorable"""
         market_id = market.get('id')
-        question = market.get('question', '')
-        
+        title = market.get('title', '')
+        question = market.get('question', title)  # Use title as fallback
+
         # Check if there's already an active bet on this market
         if self.active_bets:
             for bet in self.active_bets:
                 if bet.get('market_id') == market_id:
-                    print(f"Skipping {question[:40]}... - already have active bet on this market")
+                    print(f"Skipping {title[:40]}... - already have active bet on this market")
                     return
-        
-        # Extract crypto name from question using Regex (Fast Fallback)
-        crypto_name = self._extract_crypto_name(question)
-        
-        if crypto_name:
-            # Uncomment for verbose debugging if needed
-            # print(f"  ⚡ Regex identified asset: {crypto_name}")
-            pass
+
+        # Extract crypto name from slug (most reliable since API regex ensures proper format)
+        slug = market.get('slug', '')
+        crypto_name = self._extract_crypto_name_from_slug(slug)
         
         # Phase 9: LLM Extraction (Deep Analysis)
         llm_data = None
@@ -198,13 +225,28 @@ class MarketMonitor:
                     # Get 15-minute trend and volatility
                     trend = self.chainlink_data.get_recent_trend_15min(crypto_name, lookback_minutes=60)
                     volatility = self.chainlink_data.get_volatility_15min(crypto_name, lookback_minutes=60)
-                    
+
                     # Get RSI for additional confirmation
-                    indicators = self.chainlink_data.get_technical_indicators(crypto_name, timeframe='15min')
-                    rsi = indicators.get('rsi', 50.0)
-                    macd_histogram = indicators.get('macd_histogram', 0)
-                    sma_alignment = indicators.get('sma_alignment', 0)
-                    
+                    indicators_15m = self.chainlink_data.get_technical_indicators(crypto_name, timeframe='15min')
+                    indicators_1h = self.chainlink_data.get_technical_indicators(crypto_name, timeframe='1hour')
+
+                    # Primary indicators from 15-minute timeframe
+                    rsi = indicators_15m.get('rsi', 50.0)
+                    macd_histogram = indicators_15m.get('macd_histogram', 0)
+                    sma_alignment = indicators_15m.get('sma_alignment', 0)
+
+                    # Advanced indicators from 15-minute timeframe
+                    adx = indicators_15m.get('adx', 0.0)
+                    bb_upper = indicators_15m.get('bb_upper', 0.0)
+                    bb_lower = indicators_15m.get('bb_lower', 0.0)
+                    bb_percent = indicators_15m.get('bb_percent_b', 0.5)
+                    volume_trend = indicators_15m.get('volume_trend', 'neutral')
+
+                    # Multi-timeframe confirmation from 1-hour data
+                    rsi_1h = indicators_1h.get('rsi', 50.0) if indicators_1h else 50.0
+                    adx_1h = indicators_1h.get('adx', 0.0) if indicators_1h else 0.0
+                    bb_percent_1h = indicators_1h.get('bb_percent_b', 0.5) if indicators_1h else 0.5
+
                     # Prepare technicals for LLM
                     technicals = {
                         "current_price": current_price,
@@ -212,7 +254,14 @@ class MarketMonitor:
                         "volatility": volatility,
                         "rsi": rsi,
                         "macd": macd_histogram,
-                        "sma_alignment": sma_alignment
+                        "sma_alignment": sma_alignment,
+                        "adx": adx,
+                        "bollinger": {
+                            "upper": bb_upper,
+                            "lower": bb_lower,
+                            "percent_b": bb_percent
+                        },
+                        "volume_trend": volume_trend
                     }
                 else:
                     technicals = None
@@ -290,6 +339,16 @@ class MarketMonitor:
                 rsi = technicals['rsi']
                 macd_histogram = technicals['macd']
                 sma_alignment = technicals['sma_alignment']
+                
+                # Retrieve indicators dict for later use (ADX etc)
+                # In the cached path, we don't have the full indicators dict handy unless we rebuild it or store it
+                # For safety, let's create a partial one from technicals
+                indicators = {
+                    'rsi': rsi,
+                    'macd_histogram': macd_histogram,
+                    'sma_alignment': sma_alignment,
+                    'adx': technicals.get('adx', 0.0)
+                }
             
             print(f"  Current price: ${current_price:.2f}, Trend: {trend}, Volatility: {volatility:.2f}%, RSI: {rsi:.2f}")
             
@@ -321,42 +380,78 @@ class MarketMonitor:
                 # Bullish -> Expect pullback -> Bet NO
                 # Bearish -> Expect bounce -> Bet YES
                 
-                if trend == 'bullish' and volatility > 0.1:
-                    outcome = MarketDirection.NO
-                    confidence = 0.7
-                elif trend == 'bearish' and volatility > 0.1:
-                    outcome = MarketDirection.YES
-                    confidence = 0.7
-                elif trend == 'bullish':
-                    outcome = MarketDirection.NO
-                    confidence = 0.55
-                elif trend == 'bearish':
-                    outcome = MarketDirection.YES
-                    confidence = 0.55
+                # ENHANCED: Multi-Factor Entry Filter (ADX + Bollinger + RSI)
+                # Only trade when ALL conditions are met for higher win rate
+                adx = indicators.get('adx', 0.0)
+                bb_percent = indicators.get('bb_percent_b', 0.5)
+                rsi = indicators.get('rsi', 50.0)
+
+                # Primary filter: Weak trend (ADX < 25) for mean reversion safety
+                is_strong_trend = adx > 25.0
+
+                # Secondary filter: Price must be at extreme Bollinger Band position
+                # bb_percent < 0.1 means price is near lower band (oversold)
+                # bb_percent > 0.9 means price is near upper band (overbought)
+                is_extreme_bb = bb_percent < 0.15 or bb_percent > 0.85
+
+                # Tertiary filter: RSI must confirm extreme condition
+                is_extreme_rsi = rsi < 35 or rsi > 65
+
+                print(f"  📊 Indicators: ADX={adx:.2f}, BB%={bb_percent:.2f}, RSI={rsi:.2f}")
+
+                if is_strong_trend:
+                    print(f"  💪 Strong Trend Detected (ADX: {adx:.2f}). Skipping Mean Reversion Strategy.")
+                    return
+                elif not is_extreme_bb:
+                    print(f"  📈 Price not at Bollinger Band extreme (BB%: {bb_percent:.2f}). Waiting for better entry.")
+                    return
+                elif not is_extreme_rsi:
+                    print(f"  📊 RSI not extreme (RSI: {rsi:.2f}). Waiting for confirmation.")
+                    return
                 else:
-                    recent = self.chainlink_data.get_recent_trend_15min(crypto_name, lookback_minutes=30)
-                    if recent == 'bullish':
-                        outcome = MarketDirection.NO
-                        confidence = 0.5
-                    elif recent == 'bearish':
+                    print(f"  ✅ All filters passed! Enhanced Mean Reversion Strategy activated.")
+                    # ENHANCED MEAN REVERSION with Bollinger + RSI confirmation
+                    # Lower BB + Low RSI = Strong oversold signal -> Bet YES (expect bounce)
+                    # Upper BB + High RSI = Strong overbought signal -> Bet NO (expect pullback)
+
+                    if bb_percent < 0.15 and rsi < 35:
+                        # Strong oversold signal
                         outcome = MarketDirection.YES
-                        confidence = 0.5
+                        confidence = 0.65  # Higher confidence due to multiple confirmations
+                        print(f"  🎯 STRONG OVERSOLD: BB%={bb_percent:.2f}, RSI={rsi:.2f} → Bet YES")
+                    elif bb_percent > 0.85 and rsi > 65:
+                        # Strong overbought signal
+                        outcome = MarketDirection.NO
+                        confidence = 0.65  # Higher confidence due to multiple confirmations
+                        print(f"  🎯 STRONG OVERBOUGHT: BB%={bb_percent:.2f}, RSI={rsi:.2f} → Bet NO")
                     else:
-                        return
+                        # Fallback to original trend-based logic but with lower confidence
+                        print(f"  ⚠️ Mixed signals, using trend fallback with lower confidence")
+                        if trend == 'bullish':
+                            outcome = MarketDirection.NO
+                            confidence = 0.50
+                        elif trend == 'bearish':
+                            outcome = MarketDirection.YES
+                            confidence = 0.50
+                        else:
+                            recent = self.chainlink_data.get_recent_trend_15min(crypto_name, lookback_minutes=30)
+                            if recent == 'bullish':
+                                outcome = MarketDirection.NO
+                                confidence = 0.45
+                            elif recent == 'bearish':
+                                outcome = MarketDirection.YES
+                                confidence = 0.45
+                            else:
+                                return
                 
-                # RSI Adjustment: Boost confidence if RSI confirms mean reversion
-                # RSI > 70: Overbought -> Price likely to drop -> Confirms Bullish -> Pullback -> Bet NO
-                # RSI < 30: Oversold -> Price likely to rise -> Confirms Bearish -> Bounce -> Bet YES
-                if rsi > 70 and outcome == MarketDirection.NO:
-                    confidence += 0.1
-                    print(f"  RSI ({rsi:.2f}) confirms NO (overbought), boosting confidence to {confidence:.2f}")
-                elif rsi < 30 and outcome == MarketDirection.YES:
-                    confidence += 0.1
-                    print(f"  RSI ({rsi:.2f}) confirms YES (oversold), boosting confidence to {confidence:.2f}")
-                elif 40 < rsi < 60:
-                    # Neutral RSI, slight confidence boost for mean reversion
+                # RSI Confirmation: Additional boost for extreme readings (already filtered above)
+                # Since RSI is already part of entry criteria, this provides marginal confirmation
+                if rsi > 75 and outcome == MarketDirection.NO:
                     confidence += 0.05
-                    print(f"  RSI ({rsi:.2f}) is neutral, slight confidence boost to {confidence:.2f}")
+                    print(f"  RSI ({rsi:.2f}) strongly confirms NO (severely overbought)")
+                elif rsi < 25 and outcome == MarketDirection.YES:
+                    confidence += 0.05
+                    print(f"  RSI ({rsi:.2f}) strongly confirms YES (severely oversold)")
                 
                 # MACD Adjustment
                 if macd_histogram > 0 and outcome == MarketDirection.YES:
@@ -382,7 +477,7 @@ class MarketMonitor:
             
             print(f"  Market prices: YES=${yes_price:.2f} | NO=${no_price:.2f}")
             
-            # ARBITRAGE CHECK: If YES + NO < 0.99, bet on BOTH outcomes for guaranteed profit
+            # ARBITRAGE CHECK: If YES + NO <= 0.99, bet on BOTH outcomes for guaranteed profit
             price_sum = yes_price + no_price
             arbitrage_threshold = 0.99
             
@@ -428,7 +523,7 @@ class MarketMonitor:
                     market_end_date = market.get('endDate', '')
                     market_start_date = ''
                     
-                    # Calculate start time (15 minutes before end time)
+                    # Calculate start time (before market end time for price comparison)
                     if market_end_date:
                         try:
                             end_time = datetime.fromisoformat(market_end_date.replace('Z', '+00:00'))
@@ -437,7 +532,7 @@ class MarketMonitor:
                         except:
                             market_start_date = None
 
-                    # Add YES bet to active bets
+                    # Add YES bet to active bets (Arbitrage - very conservative stop-loss)
                     bet_info_yes = {
                         'market_id': market_id,
                         'market_slug': market.get('slug', ''),
@@ -447,6 +542,7 @@ class MarketMonitor:
                         'quantity': quantity_yes,
                         'entry_price': max_price_yes,
                         'cost': quantity_yes * max_price_yes,
+                        'stop_loss_price': max_price_yes * 0.90,  # 10% stop for arbitrage (very conservative)
                         'placed_at': datetime.now(timezone.utc).isoformat(),
                         'market_start_time': market_start_date,
                         'market_end_time': market_end_date,
@@ -454,7 +550,7 @@ class MarketMonitor:
                     }
                     self.bet_tracker.add_active_bet(bet_info_yes)
                     
-                    # Add NO bet to active bets
+                    # Add NO bet to active bets (Arbitrage - very conservative stop-loss)
                     bet_info_no = {
                         'market_id': market_id,
                         'market_slug': market.get('slug', ''),
@@ -464,13 +560,17 @@ class MarketMonitor:
                         'quantity': quantity_no,
                         'entry_price': max_price_no,
                         'cost': quantity_no * max_price_no,
+                        'stop_loss_price': max_price_no * 0.90,  # 10% stop for arbitrage (very conservative)
                         'placed_at': datetime.now(timezone.utc).isoformat(),
                         'market_start_time': market_start_date,
                         'market_end_time': market_end_date,
                         'entry_crypto_price': current_price if current_price else None
                     }
                     self.bet_tracker.add_active_bet(bet_info_no)
-                    
+
+                    # Sync active bets list to reflect new arbitrage bets
+                    self._sync_active_bets()
+
                 else:
                     print(f"  ❌ Failed to place arbitrage bets")
                 
@@ -511,15 +611,52 @@ class MarketMonitor:
                 print(f"  Skipping: Confidence ({confidence:.2f}) below minimum threshold ({min_confidence_threshold:.2f})")
                 return
             
-            # Bet amount: Max 5% of balance, capped at $500
-            # Apply Stake Multiplier from LLM
+            # ENHANCED: Volatility-adjusted position sizing
+            # Base bet: 5% of balance, adjusted by volatility and confidence
             base_bet_percent = 0.05
-            adjusted_bet_percent = base_bet_percent * stake_multiplier
-            
+
+            # Volatility adjustment: Lower volatility = larger position, higher volatility = smaller position
+            # Scale volatility factor between 0.5 (high vol) and 1.5 (low vol)
+            vol_factor = max(0.5, min(1.5, 1.0 - (volatility - 0.5) * 2.0))  # Normalize around 0.5% vol
+
+            # Confidence adjustment: Higher confidence = larger position
+            confidence_factor = min(1.5, confidence / 0.6)  # Scale up to 1.5x for >60% confidence
+
+            # Combined adjustment with stake multiplier from LLM
+            adjusted_bet_percent = base_bet_percent * vol_factor * confidence_factor * stake_multiplier
+
+            # Cap at reasonable maximum (15% of balance) and minimum ($10)
+            max_bet_percent = 0.15
+            adjusted_bet_percent = min(max_bet_percent, adjusted_bet_percent)
+
             bet_amount = min(500.0 * stake_multiplier, float(self.portfolio.current_balance) * adjusted_bet_percent)
-            
-            print(f"  💰 Bet Sizing: {adjusted_bet_percent*100:.1f}% of balance (Base: 5% * {stake_multiplier}x)")
-            
+
+            # Check position limits before sizing
+            current_exposure = sum(bet.get('cost', 0.0) for bet in self.active_bets)
+            max_portfolio_exposure = float(self.portfolio.current_balance) * 0.50  # Max 50% exposure
+
+            if current_exposure >= max_portfolio_exposure:
+                print(f"  Skipping: Portfolio exposure limit reached (${current_exposure:.2f} >= ${max_portfolio_exposure:.2f})")
+                return
+
+            # Check single crypto exposure
+            crypto_exposure = sum(bet.get('cost', 0.0) for bet in self.active_bets
+                                if bet.get('crypto_name') == crypto_name)
+            max_crypto_exposure = float(self.portfolio.current_balance) * 0.20  # Max 20% per crypto
+
+            if crypto_exposure >= max_crypto_exposure:
+                print(f"  Skipping: {crypto_name} exposure limit reached (${crypto_exposure:.2f} >= ${max_crypto_exposure:.2f})")
+                return
+
+            # Check concurrent positions
+            if len(self.active_bets) >= 5:
+                print(f"  Skipping: Maximum concurrent positions reached ({len(self.active_bets)} >= 5)")
+                return
+
+            print(f"  💰 Enhanced Bet Sizing: {adjusted_bet_percent*100:.1f}% of balance")
+            print(f"     Factors: Vol={vol_factor:.2f}, Conf={confidence_factor:.2f}, Stake={stake_multiplier:.1f}x")
+            print(f"     Volatility: {volatility:.2f}%, Confidence: {confidence:.2f}")
+
             if bet_amount <= 10:
                 print(f"  Skipping: Insufficient balance to bet (min $10 required)")
                 return
@@ -546,7 +683,7 @@ class MarketMonitor:
                 market_end_date = market.get('endDate', '')
                 market_start_date = ''
                 
-                # Calculate start time (15 minutes before end time)
+                # Calculate start time (before market end time for price comparison)
                 if market_end_date:
                     try:
                         end_time = datetime.fromisoformat(market_end_date.replace('Z', '+00:00'))
@@ -555,6 +692,23 @@ class MarketMonitor:
                     except:
                         market_start_date = None
                 
+                # Calculate stop-loss levels
+                # Fixed stop-loss: -5% from entry price
+                fixed_stop_loss = max_price * 0.95  # 5% loss threshold
+
+                # ATR-based stop-loss (if ATR data available)
+                atr_stop_loss = None
+                if indicators.get('atr'):
+                    atr_value = indicators.get('atr', 0.0)
+                    # Use 1.5x ATR for stop distance (common in trading)
+                    atr_stop_distance = atr_value * 1.5
+                    atr_stop_loss = max_price - atr_stop_distance
+                    # Ensure ATR stop isn't too close (minimum 2% stop)
+                    atr_stop_loss = min(atr_stop_loss, max_price * 0.98)
+
+                # Use the more conservative (higher) stop-loss level
+                stop_loss_price = max(fixed_stop_loss, atr_stop_loss) if atr_stop_loss else fixed_stop_loss
+
                 # Add to active bets for monitoring using BetTracker
                 bet_info = {
                     'market_id': market_id,
@@ -565,6 +719,7 @@ class MarketMonitor:
                     'quantity': quantity,
                     'entry_price': max_price,
                     'cost': quantity * max_price,
+                    'stop_loss_price': stop_loss_price,
                     'placed_at': datetime.now(timezone.utc).isoformat(),
                     'market_start_time': market_start_date,
                     'market_end_time': market_end_date,
@@ -572,13 +727,107 @@ class MarketMonitor:
                 }
                 
                 self.bet_tracker.add_active_bet(bet_info)
-                
+
                 print(f"  Bet placed successfully! Quantity: {quantity:.2f} at ${max_price:.2f}")
+
+                # Sync active bets list to reflect new bet
+                self._sync_active_bets()
             else:
                 print(f"  Failed to place bet on {question[:30]}...")
             
         except Exception as e:
             print(f"Error analyzing market {market_id}: {e}")
+
+    def place_limit_order(self, market_id: str, outcome: MarketDirection,
+                         quantity: float, limit_price: float, side: TradeType = TradeType.BUY,
+                         expires_at: Optional[datetime] = None) -> Optional[str]:
+        """
+        Place a limit order using the enhanced order executor.
+
+        Args:
+            market_id: Market identifier
+            outcome: YES or NO outcome
+            quantity: Order quantity
+            limit_price: Maximum price to pay (for buys) or minimum price to receive (for sells)
+            side: Buy or sell
+            expires_at: Optional expiration time
+
+        Returns:
+            Order ID if successful, None otherwise
+        """
+        if not self.enhanced_order_executor:
+            print("Enhanced order executor not available")
+            return None
+
+        return self.enhanced_order_executor.place_limit_order(
+            market_id=market_id,
+            outcome=outcome,
+            quantity=quantity,
+            limit_price=limit_price,
+            side=side,
+            expires_at=expires_at
+        )
+
+    def place_trailing_stop(self, market_id: str, outcome: MarketDirection,
+                           quantity: float, trailing_percent: float,
+                           side: TradeType = TradeType.SELL) -> Optional[str]:
+        """
+        Place a trailing stop order using the enhanced order executor.
+
+        Args:
+            market_id: Market identifier
+            outcome: YES or NO outcome
+            quantity: Order quantity
+            trailing_percent: Percentage to trail price movement
+            side: Buy or sell (typically SELL for trailing stops)
+
+        Returns:
+            Order ID if successful, None otherwise
+        """
+        if not self.enhanced_order_executor:
+            print("Enhanced order executor not available")
+            return None
+
+        return self.enhanced_order_executor.place_trailing_stop(
+            market_id=market_id,
+            outcome=outcome,
+            quantity=quantity,
+            trailing_percent=trailing_percent,
+            side=side
+        )
+
+    def get_enhanced_orders_status(self) -> Dict[str, Any]:
+        """
+        Get status of all enhanced orders.
+
+        Returns:
+            Dictionary with active orders and their status
+        """
+        if not self.enhanced_order_executor:
+            return {"enhanced_orders_enabled": False}
+
+        active_orders = self.enhanced_order_executor.get_active_orders()
+        return {
+            "enhanced_orders_enabled": True,
+            "active_orders_count": len(active_orders),
+            "active_orders": active_orders
+        }
+
+    def cancel_enhanced_order(self, order_id: str) -> bool:
+        """
+        Cancel an enhanced order.
+
+        Args:
+            order_id: Order ID to cancel
+
+        Returns:
+            True if cancelled successfully, False otherwise
+        """
+        if not self.enhanced_order_executor:
+            print("Enhanced order executor not available")
+            return False
+
+        return self.enhanced_order_executor.cancel_order(order_id)
 
     def _get_prices_safely(self, market: Dict) -> Dict[str, float]:
         """Helper to safely extract prices from market object or fetch fresh"""
@@ -668,11 +917,26 @@ class MarketMonitor:
                 
                 should_sell = False
                 reason = ""
-                
-                # Strategy 1: Take Profit (High ROI)
-                if pnl_percent >= 40.0:
+
+                # Strategy 0: Stop Loss Protection (Highest Priority)
+                stop_loss_price = bet.get('stop_loss_price', 0.0)
+                if stop_loss_price > 0.0 and current_price <= stop_loss_price:
                     should_sell = True
-                    reason = f"Take Profit (+{pnl_percent:.1f}%)"
+                    loss_percent = ((current_price - entry_price) / entry_price) * 100
+                    reason = f"Stop Loss Triggered ({loss_percent:.1f}%)"
+
+                # Strategy 1: Take Profit (Multiple Levels)
+                if not should_sell:
+                    if pnl_percent >= 50.0:
+                        should_sell = True
+                        reason = f"Take Profit - Excellent (+{pnl_percent:.1f}%)"
+                    elif pnl_percent >= 25.0:
+                        should_sell = True
+                        reason = f"Take Profit - Good (+{pnl_percent:.1f}%)"
+                    elif pnl_percent >= 15.0 and outcome == 'YES':
+                        # For YES bets, take profit at 15% (faster exit due to time decay)
+                        should_sell = True
+                        reason = f"Take Profit - Moderate (+{pnl_percent:.1f}%, YES position)"
                 
                 # Strategy 2: Stop Loss (Deep Loss)
                 elif pnl_percent <= -50.0:
@@ -767,10 +1031,93 @@ class MarketMonitor:
             except Exception as e:
                 print(f"  Error managing position {bet.get('market_id')}: {e}")
 
+    def _sync_active_bets(self):
+        """Sync active bets from BetTracker storage to ensure we have latest data"""
+        if self.bet_tracker:
+            try:
+                self.active_bets = self.bet_tracker.get_active_bets()
+            except Exception as e:
+                print(f"⚠️ Failed to sync active bets: {e}")
+
+    def _check_drawdown_limits(self):
+        """Check portfolio drawdown limits and trigger emergency stops if needed"""
+        if self.emergency_stop_triggered:
+            return True  # Already stopped
+
+        current_balance = float(self.portfolio.current_balance)
+
+        # Update peak balance
+        if current_balance > self.portfolio_peak_balance:
+            self.portfolio_peak_balance = current_balance
+
+        # Calculate drawdowns
+        portfolio_drawdown = (self.portfolio_peak_balance - current_balance) / self.portfolio_peak_balance * 100
+        daily_drawdown = (self.daily_start_balance - current_balance) / self.daily_start_balance * 100
+        weekly_drawdown = (self.weekly_start_balance - current_balance) / self.weekly_start_balance * 100
+
+        # Emergency stop: 30% portfolio drawdown
+        if portfolio_drawdown >= 30.0:
+            print(f"🚨 EMERGENCY STOP: Portfolio down {portfolio_drawdown:.1f}% from peak")
+            self.emergency_stop_triggered = True
+            self._emergency_stop()
+            return True
+
+        # Daily limit: 10% drawdown
+        if daily_drawdown >= 10.0:
+            print(f"⚠️ Daily drawdown limit reached ({daily_drawdown:.1f}%). Pausing trading for today.")
+            return True
+
+        # Weekly limit: 20% drawdown
+        if weekly_drawdown >= 20.0:
+            print(f"⚠️ Weekly drawdown limit reached ({weekly_drawdown:.1f}%). Reducing position sizes.")
+            return True
+
+        return False  # Trading allowed
+
+    def _emergency_stop(self):
+        """Emergency stop - close all positions and halt trading"""
+        print("🚨 EXECUTING EMERGENCY STOP PROTOCOL")
+        print("🔒 Closing all active positions...")
+
+        # Close all active positions at market
+        for bet in list(self.active_bets):
+            try:
+                market_id = bet.get('market_id')
+                outcome = bet.get('outcome')
+                quantity = bet.get('quantity', 0.0)
+
+                # Convert outcome string to Enum
+                try:
+                    outcome_enum = MarketDirection(outcome)
+                except ValueError:
+                    outcome_enum = MarketDirection(outcome.upper())
+
+                # Place emergency sell order
+                trade = self.order_executor.place_sell_order(
+                    market_id=market_id,
+                    outcome=outcome_enum,
+                    quantity=quantity,
+                    min_price=0.01  # Accept any price to exit quickly
+                )
+
+                if trade:
+                    print(f"✅ Emergency closed position: {bet.get('question', '')[:30]}...")
+                else:
+                    print(f"❌ Failed to close position: {bet.get('question', '')[:30]}...")
+
+            except Exception as e:
+                print(f"❌ Error closing position: {e}")
+
+        print("🔒 Emergency stop complete. Trading halted.")
+        print("💡 To resume trading, restart the application and reset emergency flags.")
+
     def _check_and_settle_resolved_bets(self):
         """
         Check if any active bets have been resolved and settle them
         """
+        # Sync with BetTracker first to ensure we have latest bets
+        self._sync_active_bets()
+
         if not self.active_bets:
             return
 
@@ -826,9 +1173,14 @@ class MarketMonitor:
             print(f"│ 🗑️  REMOVING {len(bets_to_remove)} SETTLED BET(S)             │")
             print("└────────────────────────────────────────────────────────────────┘")
 
-        for bet in bets_to_remove:
-            if bet in self.active_bets:
-                self.active_bets.remove(bet)
+            for bet in bets_to_remove:
+                if bet in self.active_bets:
+                    self.active_bets.remove(bet)
+                    # Also remove from persistent storage (active_bets.json)
+                    if self.bet_tracker:
+                        # Re-save the updated active_bets list
+                        self.bet_tracker.active_bets = self.active_bets
+                        self.bet_tracker._save_active_bets()
 
         if not bets_to_remove:
             print()
@@ -857,9 +1209,32 @@ class MarketMonitor:
         # to reflect current P&L of open positions
         pass
     
-    def _extract_crypto_name(self, question: str) -> str:
-        """Extract cryptocurrency name from market question"""
-        question_lower = question.lower()
+
+
+    def _extract_crypto_name_from_slug(self, slug: str) -> str:
+        """Extract crypto name from slug (e.g., 'btc-updown-15m-...' -> 'bitcoin')"""
+        if not slug:
+            return ""
+
+        slug_lower = slug.lower()
+
+        # Map slug prefixes to full crypto names
+        crypto_map = {
+            'btc': 'bitcoin',
+            'eth': 'ethereum',
+            'xrp': 'ripple',  # or 'xrp'
+            'sol': 'solana'
+        }
+
+        for prefix, name in crypto_map.items():
+            if slug_lower.startswith(f'{prefix}-'):
+                return name
+
+        return ""
+
+    def _extract_crypto_name(self, title: str) -> str:
+        """Extract cryptocurrency name from market title/question"""
+        question_lower = title.lower()
         
         # Map common phrases to crypto names
         crypto_mappings = {

@@ -184,14 +184,14 @@ class TestPolymarketWebSocketClient(unittest.TestCase):
 
         self.client.on_arbitrage = arbitrage_callback
 
-        # Price data with arbitrage opportunity (YES + NO < 0.99)
+        # Price data with arbitrage opportunity (YES + NO <= 0.99)
         message_data = {
             'type': 'book',
             'asset_id': 'arb_token',
             'yes': {'best_bid': 0.48, 'best_ask': 0.50},
             'no': {'best_bid': 0.40, 'best_ask': 0.42}
         }
-        # yes_mid = 0.49, no_mid = 0.41, sum = 0.90 < 0.99
+        # yes_mid = 0.49, no_mid = 0.41, sum = 0.90 <= 0.99
 
         async def run_test():
             await self.client._process_single_message(message_data)

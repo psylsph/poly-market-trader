@@ -142,7 +142,7 @@ class MonitoringStatusDashboard:
         # Show status details
         print("\n  System Details:")
         if polling_active:
-            print("    • Polling monitor checks every 15 minutes")
+            print("    • Polling monitor checks every 15 minutes (market scanning interval)")
         if ws_active and ws_connected:
             print("    • WebSocket provides real-time arbitrage detection")
             print("    • Instant order execution on arbitrage opportunities")

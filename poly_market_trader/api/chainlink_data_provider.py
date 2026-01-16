@@ -1,9 +1,11 @@
 import requests
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime, timedelta
 import json
 import os
 import time
+import pandas as pd
+import numpy as np
 from ..config.settings import DEFAULT_INITIAL_BALANCE
 
 
@@ -209,6 +211,160 @@ class ChainlinkDataProvider:
                 return None
 
         return None
+
+    def _get_binance_historical_prices_df(self, crypto_name: str, hours: int = 1, interval: str = '15m') -> Optional[pd.DataFrame]:
+        """
+        Get historical prices from Binance API as a Pandas DataFrame
+        Includes: timestamp, open, high, low, close, volume
+        """
+        symbol = self.binance_symbols.get(crypto_name.lower())
+        if not symbol:
+            # Try to find closest match
+            for key, value in self.binance_symbols.items():
+                if crypto_name.lower() in key or crypto_name.lower() in value.lower():
+                    symbol = value
+                    break
+
+        if not symbol:
+            return None
+
+        try:
+            url = f"{self.binance_api}/klines"
+            params = {
+                'symbol': f'{symbol}USDT',
+                'interval': interval,
+                'limit': hours * (60 if interval == '1m' else 20)  # Get enough data points
+            }
+
+            response = self._get_with_retry(url, params)
+            if response:
+                data = response.json()
+                
+                # Binance returns: [open_time, open, high, low, close, volume, ...]
+                # We need columns for OHLCV
+                df = pd.DataFrame(data, columns=[
+                    'timestamp', 'open', 'high', 'low', 'close', 'volume', 
+                    'close_time', 'quote_asset_volume', 'trades', 
+                    'taker_buy_base', 'taker_buy_quote', 'ignore'
+                ])
+                
+                # Convert types
+                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                df['open'] = df['open'].astype(float)
+                df['high'] = df['high'].astype(float)
+                df['low'] = df['low'].astype(float)
+                df['close'] = df['close'].astype(float)
+                df['volume'] = df['volume'].astype(float)
+                
+                # Keep relevant columns
+                df = df[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
+                return df
+
+            return None
+
+        except Exception as e:
+            print(f"Error fetching historical DF from Binance for {crypto_name}: {e}")
+            return None
+
+    def calculate_adx(self, df: pd.DataFrame, period: int = 14) -> float:
+        """
+        Calculate Average Directional Index (ADX) using Pandas
+        """
+        if len(df) < period + 1:
+            return 0.0
+            
+        # Calculate True Range
+        df['h-l'] = df['high'] - df['low']
+        df['h-pc'] = abs(df['high'] - df['close'].shift(1))
+        df['l-pc'] = abs(df['low'] - df['close'].shift(1))
+        df['tr'] = df[['h-l', 'h-pc', 'l-pc']].max(axis=1)
+        
+        # Calculate Directional Movement
+        df['up_move'] = df['high'] - df['high'].shift(1)
+        df['down_move'] = df['low'].shift(1) - df['low']
+        
+        df['plus_dm'] = np.where((df['up_move'] > df['down_move']) & (df['up_move'] > 0), df['up_move'], 0)
+        df['minus_dm'] = np.where((df['down_move'] > df['up_move']) & (df['down_move'] > 0), df['down_move'], 0)
+        
+        # Calculate Smoothed TR and DM (Wilder's Smoothing)
+        # First value is simple sum
+        tr14 = df['tr'].rolling(period).sum()
+        plus_dm14 = df['plus_dm'].rolling(period).sum()
+        minus_dm14 = df['minus_dm'].rolling(period).sum()
+        
+        # Subsequent values use smoothing: previous - (previous/period) + current
+        # For simplicity in this implementation, we'll use EMA as a proxy which is close enough for trading signals
+        # Or standard rolling mean for simplicity if dataset is small
+        
+        # Calculate +DI and -DI
+        df['plus_di'] = 100 * (plus_dm14 / tr14)
+        df['minus_di'] = 100 * (minus_dm14 / tr14)
+        
+        # Calculate DX
+        df['dx'] = 100 * abs(df['plus_di'] - df['minus_di']) / (df['plus_di'] + df['minus_di'])
+        
+        # Calculate ADX (Smoothed DX)
+        adx = df['dx'].rolling(period).mean().iloc[-1]
+        
+        return float(adx) if not pd.isna(adx) else 0.0
+
+    def calculate_bollinger_bands(self, df: pd.DataFrame, period: int = 20, std_dev: int = 2) -> Dict[str, float]:
+        """
+        Calculate Bollinger Bands
+        """
+        if len(df) < period:
+            return {'upper': 0.0, 'middle': 0.0, 'lower': 0.0, 'percent_b': 0.5}
+            
+        df['sma'] = df['close'].rolling(period).mean()
+        df['std'] = df['close'].rolling(period).std()
+        
+        df['upper'] = df['sma'] + (df['std'] * std_dev)
+        df['lower'] = df['sma'] - (df['std'] * std_dev)
+        
+        last_row = df.iloc[-1]
+        upper = float(last_row['upper'])
+        lower = float(last_row['lower'])
+        middle = float(last_row['sma'])
+        close = float(last_row['close'])
+        
+        # Percent B: Where is price relative to bands? (0 = lower, 1 = upper, >1 = breakout)
+        if upper != lower:
+            percent_b = (close - lower) / (upper - lower)
+        else:
+            percent_b = 0.5
+            
+        return {
+            'upper': upper,
+            'middle': middle,
+            'lower': lower,
+            'percent_b': percent_b
+        }
+
+    def calculate_volume_trend(self, df: pd.DataFrame, period: int = 20) -> Dict[str, Any]:
+        """
+        Analyze volume trend
+        """
+        if len(df) < period:
+            return {'trend': 'neutral', 'change_percent': 0.0}
+            
+        vol_sma = df['volume'].rolling(period).mean()
+        current_vol = df['volume'].iloc[-1]
+        avg_vol = vol_sma.iloc[-1]
+        
+        vol_change = ((current_vol - avg_vol) / avg_vol) * 100 if avg_vol > 0 else 0
+        
+        trend = 'neutral'
+        if vol_change > 20:
+            trend = 'high'
+        elif vol_change < -20:
+            trend = 'low'
+            
+        return {
+            'trend': trend,
+            'change_percent': vol_change,
+            'current': float(current_vol),
+            'average': float(avg_vol)
+        }
 
     def _get_binance_historical_prices(self, crypto_name: str, hours: int = 1, interval: str = '15m') -> Optional[List[Tuple[datetime, float]]]:
         """Get historical prices from Binance API"""
@@ -585,6 +741,22 @@ class ChainlinkDataProvider:
         # MACD (12, 26, 9 standard)
         macd_line, signal_line, macd_histogram = self.calculate_macd(prices, fast=12, slow=26, signal=9)
 
+        # NEW: Advanced Indicators using Pandas (ADX, Bollinger, Volume)
+        adx = 0.0
+        bb = {'upper': 0.0, 'lower': 0.0, 'percent_b': 0.5}
+        vol_data = {'trend': 'neutral'}
+        
+        try:
+            # Re-fetch as DataFrame for advanced calc
+            # We need more data for accurate ADX/BB (at least 20-30 periods)
+            df = self._get_binance_historical_prices_df(crypto_name, hours=hours*2, interval=interval)
+            if df is not None and not df.empty:
+                adx = self.calculate_adx(df)
+                bb = self.calculate_bollinger_bands(df)
+                vol_data = self.calculate_volume_trend(df)
+        except Exception as e:
+            print(f"Error calculating advanced indicators for {crypto_name}: {e}")
+
         return {
             'sma_9': sma_9,
             'sma_20': sma_20,
@@ -595,7 +767,12 @@ class ChainlinkDataProvider:
             'rsi': rsi,
             'macd_line': macd_line,
             'signal_line': signal_line,
-            'macd_histogram': macd_histogram
+            'macd_histogram': macd_histogram,
+            'adx': adx,
+            'bb_upper': bb.get('upper', 0.0),
+            'bb_lower': bb.get('lower', 0.0),
+            'bb_percent_b': bb.get('percent_b', 0.5),
+            'volume_trend': vol_data.get('trend', 'neutral')
         }
 
     def calculate_rsi(self, prices: List[float], period: int = 14) -> float:

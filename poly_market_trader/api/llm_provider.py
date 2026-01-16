@@ -35,7 +35,8 @@ class LLMProvider:
         self.base_url = base_url or os.getenv('LLM_BASE_URL', settings.LLM_BASE_URL)
         self.api_key = api_key or os.getenv('LLM_API_KEY', settings.LLM_API_KEY)
         self.client = OpenAI(base_url=self.base_url, api_key=self.api_key)
-        self.default_model = LLMModel.REASONING.value # Default to reasoning model as requested
+        self.default_model = LLMModel.NANO.value # Default to nano model for faster responses
+        #self.default_model = LLMModel.REASONING.value
 
         
     def _get_system_prompt(self, context: MarketContext) -> str:
@@ -71,9 +72,16 @@ Analyze the market and provide a JSON response with the following fields:
 5. "reasoning": A brief explanation of your decision, citing technicals or market sentiment.
 
 STRATEGY GUIDELINES:
-- **Arbitrage**: If (YES Price + NO Price) < 0.99, this is free money. Decision MUST be "BOTH" and stake_factor 1.5.
-- **Mean Reversion**: If RSI > 70 (Overbought), expect a drop (Bet NO on "Up" / YES on "Down").
-- **Trend Following**: If strong trend matches the outcome, bet with it.
+- **Arbitrage**: If (YES Price + NO Price) <= 0.99, this is free money. Decision MUST be "BOTH" and stake_factor 1.5.
+- **Trend Strength (ADX)**: If ADX > 25, the trend is STRONG.
+    - **Bullish Trend (Up) + ADX > 25**: BET WITH TREND (YES). Do NOT bet NO even if RSI > 70.
+    - **Bearish Trend (Down) + ADX > 25**: BET WITH TREND (NO). Do NOT bet YES even if RSI < 30.
+- **Mean Reversion**: ONLY valid if ADX < 25 (Weak Trend).
+    - If ADX < 25 and RSI > 70 (Overbought) -> Bet NO.
+    - If ADX < 25 and RSI < 30 (Oversold) -> Bet YES.
+- **Bollinger Bands**:
+    - Price > Upper Band: Overbought (bearish signal).
+    - Price < Lower Band: Oversold (bullish signal).
 - **Value**: If your confidence > market price, it's a value bet.
 - **Stake Sizing**: Higher confidence = higher stake_factor. Max 1.5x for high conviction (>0.8).
 

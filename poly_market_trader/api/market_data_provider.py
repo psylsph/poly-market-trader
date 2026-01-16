@@ -238,7 +238,7 @@ class MarketDataProvider:
     def get_crypto_markets(self, use_15m_only: bool = False, limit: int = 100) -> List[Dict]:
         """
         Get all markets related to cryptocurrency
-        :param use_15m_only: If True, only return 15M crypto markets (expiring in ~15 minutes)
+        :param use_15m_only: If True, only return crypto up/down markets (15min, 1h, 4h timeframes)
         :param limit: Number of markets to return
         :return: List of crypto-related market dictionaries
         """

@@ -67,7 +67,7 @@ class TestStrategyLogic(unittest.TestCase):
 
     def test_arbitrage_opportunity(self):
         """
-        Test arbitrage detection: YES + NO < 0.99 = arbitrage opportunity
+        Test arbitrage detection: YES + NO <= 0.99 = arbitrage opportunity
         Example: YES=0.60, NO=0.30, Sum=0.90 -> Buy both, guaranteed profit
         """
         yes_price = 0.60
@@ -77,7 +77,7 @@ class TestStrategyLogic(unittest.TestCase):
         
         is_arbitrage = price_sum < arbitrage_threshold and yes_price > 0.01 and no_price > 0.01
         
-        self.assertTrue(is_arbitrage, "Should detect arbitrage when YES + NO < 0.99")
+        self.assertTrue(is_arbitrage, "Should detect arbitrage when YES + NO <= 0.99")
         
         # Calculate expected profit
         bet_amount = 100.0
@@ -99,7 +99,7 @@ class TestStrategyLogic(unittest.TestCase):
         price_sum = yes_price + no_price
         arbitrage_threshold = 0.99
         
-        is_arbitrage = price_sum < arbitrage_threshold
+        is_arbitrage = price_sum <= arbitrage_threshold
         
         self.assertFalse(is_arbitrage, "Should not detect arbitrage when YES + NO = 1.0")
 
@@ -112,7 +112,7 @@ class TestStrategyLogic(unittest.TestCase):
         price_sum = yes_price + no_price
         arbitrage_threshold = 0.99
         
-        is_arbitrage = price_sum < arbitrage_threshold
+        is_arbitrage = price_sum <= arbitrage_threshold
         
         self.assertFalse(is_arbitrage, "Should not detect arbitrage when YES + NO > 1.0")
 

@@ -19,3 +19,4 @@ data/*.json
 archive/
 keys.env
 polymarket*.json
+.opencode
