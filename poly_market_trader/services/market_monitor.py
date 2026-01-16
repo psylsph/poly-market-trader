@@ -1,6 +1,7 @@
 import time
 import threading
 import json
+import asyncio
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone, timedelta
 from ..models.trade import MarketDirection, Trade, TradeType
@@ -10,6 +11,7 @@ from ..api.llm_provider import LLMProvider, MarketContext
 from ..services.order_executor import OrderExecutor
 from ..services.enhanced_order_executor import EnhancedOrderExecutor
 from ..models.portfolio import Portfolio
+from ..api.websocket_client import PolymarketWebSocketClient
 from decimal import Decimal
 import logging
 from ..config import settings
@@ -25,7 +27,8 @@ class MarketMonitor:
     def __init__(self, portfolio: Portfolio, market_data: MarketDataProvider,
                  chainlink_data: ChainlinkDataProvider, order_executor: OrderExecutor,
                  bet_tracker=None, use_llm: bool = settings.ENABLE_LLM,
-                 enhanced_order_executor: Optional[EnhancedOrderExecutor] = None):
+                 enhanced_order_executor: Optional[EnhancedOrderExecutor] = None,
+                 enable_websocket: bool = True):
         self.portfolio = portfolio
         self.market_data = market_data
         self.chainlink_data = chainlink_data
@@ -37,13 +40,19 @@ class MarketMonitor:
         self.check_interval = 900  # 15 minutes in seconds (market scanning interval)
         self.active_bets = []  # Track active bets that need monitoring
 
+        # WebSocket integration
+        self.enable_websocket = enable_websocket
+        self.websocket_client = None
+        self.websocket_thread = None
+        self.last_price_update = {}  # Track last update time per asset
+
         # Risk management state
         self.portfolio_start_balance = float(portfolio.current_balance)
         self.daily_start_balance = float(portfolio.current_balance)
         self.weekly_start_balance = float(portfolio.current_balance)
         self.portfolio_peak_balance = float(portfolio.current_balance)
         self.emergency_stop_triggered = False
-        
+
         # Load active bets from storage if available
         if self.bet_tracker:
             try:
@@ -64,6 +73,299 @@ class MarketMonitor:
 
         print("🚀 Enhanced Order Executor Integrated" if enhanced_order_executor else "📋 Using Standard Order Executor")
 
+        if self.enable_websocket:
+            print("🔗 WebSocket Integration Enabled for Real-Time Updates")
+            self._init_websocket()
+        else:
+            print("⏰ Polling Mode Enabled (15-minute intervals)")
+
+    def _init_websocket(self):
+        """Initialize WebSocket client for real-time price updates"""
+        try:
+            # Create WebSocket client
+            self.websocket_client = PolymarketWebSocketClient()
+
+            # Set callbacks
+            self.websocket_client.on_price_update = self._on_price_update
+            self.websocket_client.on_arbitrage = self._on_arbitrage_opportunity
+
+            print("🔌 WebSocket client initialized with callbacks")
+
+        except Exception as e:
+            print(f"⚠️ Failed to initialize WebSocket client: {e}")
+            self.enable_websocket = False
+
+    def _on_price_update(self, asset_id: str, yes_price: float, no_price: float):
+        """Callback for real-time price updates from WebSocket"""
+        try:
+            # Throttle updates to avoid excessive processing (max 1 per asset per 5 seconds)
+            current_time = time.time()
+            if asset_id in self.last_price_update:
+                if current_time - self.last_price_update[asset_id] < 5:
+                    return
+
+            self.last_price_update[asset_id] = current_time
+
+            # Calculate mid prices
+            yes_mid = yes_price
+            no_mid = no_price
+
+            print(f"📈 Real-time update: {asset_id[:20]}... YES:${yes_mid:.4f}, NO:${no_mid:.4f}")
+
+            # Check if this triggers any analysis (for active positions or opportunities)
+            self._check_price_alerts(asset_id, yes_mid, no_mid)
+
+        except Exception as e:
+            print(f"Error processing WebSocket price update: {e}")
+
+    def _on_arbitrage_opportunity(self, arbitrage_info: Dict):
+        """Callback for arbitrage opportunities detected by WebSocket"""
+        try:
+            token_id = arbitrage_info['token_id']
+            profit_pct = arbitrage_info['profit']
+
+            print(f"🎯 WebSocket Arbitrage: {token_id[:20]}... Profit: {profit_pct:.1f}%")
+
+            # Find market_id for this token
+            market_id = self._find_market_for_token(token_id)
+            if not market_id:
+                print(f"   ⚠️ Could not find market for token {token_id[:20]}...")
+                return
+
+            # Place arbitrage bet if profitable enough
+            if profit_pct >= 1.0:  # At least 1% profit
+                self._place_arbitrage_bet(market_id, arbitrage_info)
+
+        except Exception as e:
+            print(f"Error processing arbitrage opportunity: {e}")
+
+    def _check_price_alerts(self, asset_id: str, yes_price: float, no_price: float):
+        """Check if price update triggers any alerts or actions"""
+        try:
+            # Find markets that contain this asset_id
+            # This is a simplified approach - in production you'd want a proper mapping
+            markets_with_asset = self._find_markets_containing_asset(asset_id)
+
+            for market in markets_with_asset:
+                market_id = market.get('id')
+                if not market_id:
+                    continue
+
+                # Check if we should analyze this market based on price movement
+                should_analyze = self._should_analyze_market_on_price_change(market, yes_price, no_price)
+                if should_analyze:
+                    print(f"🔍 Real-time analysis triggered for market {market_id[:20]}...")
+                    self._analyze_market_realtime(market, yes_price, no_price)
+
+        except Exception as e:
+            print(f"Error in price alerts check: {e}")
+
+    def _find_markets_containing_asset(self, asset_id: str) -> List[Dict]:
+        """Find markets that contain the given asset_id"""
+        # This is a simplified implementation
+        # In production, you'd maintain a proper asset_id -> market mapping
+        try:
+            # Get recent crypto markets and check which ones contain this asset
+            crypto_markets = self.market_data.get_crypto_up_down_markets(limit=50)
+            matching_markets = []
+
+            for market in crypto_markets:
+                clob_token_ids_raw = market.get('clobTokenIds', '[]')
+                try:
+                    if isinstance(clob_token_ids_raw, str):
+                        clob_token_ids = json.loads(clob_token_ids_raw)
+                    else:
+                        clob_token_ids = clob_token_ids_raw
+
+                    if asset_id in clob_token_ids:
+                        matching_markets.append(market)
+                except:
+                    continue
+
+            return matching_markets
+        except Exception as e:
+            print(f"Error finding markets for asset {asset_id}: {e}")
+            return []
+
+    def _should_analyze_market_on_price_change(self, market: Dict, yes_price: float, no_price: float) -> bool:
+        """Determine if market should be analyzed based on price change"""
+        # Simple logic: analyze if prices are reasonable and market is active
+        if yes_price <= 0 or no_price <= 0:
+            return False
+
+        if yes_price >= 1.0 or no_price >= 1.0:  # Very unlikely prices
+            return False
+
+        # Check if market is still active (not ended)
+        end_date_str = market.get('endDate')
+        if end_date_str:
+            try:
+                if end_date_str.endswith('Z'):
+                    end_date_str = end_date_str[:-1] + '+00:00'
+                end_time = datetime.fromisoformat(end_date_str)
+                now = datetime.now(timezone.utc)
+                if end_time <= now:
+                    return False  # Market has ended
+            except:
+                pass
+
+        return True
+
+    def _analyze_market_realtime(self, market: Dict, yes_price: float, no_price: float):
+        """Perform real-time analysis on a market with current prices"""
+        try:
+            market_id = market.get('id')
+            question = market.get('question', 'Unknown question')
+
+            print(f"  Analyzing: {question[:60]}...")
+
+            # Get technical indicators for the crypto
+            crypto_symbol = self._extract_crypto_from_market(market)
+            if not crypto_symbol:
+                return
+
+            # Get Chainlink data
+            try:
+                technicals = self.chainlink_data.get_technical_indicators(crypto_symbol, timeframe='15min')
+            except Exception as e:
+                print(f"    ⚠️ Failed to get technical data: {e}")
+                return
+
+            # Create market context for LLM analysis
+            context = MarketContext(
+                question=question,
+                description=market.get('description', ''),
+                yes_price=yes_price,
+                no_price=no_price,
+                volume=float(market.get('volume', 0)),
+                tags=market.get('tags', []),
+                technicals=technicals,
+                balance=float(self.portfolio.current_balance)
+            )
+
+            # Get LLM decision
+            if self.use_llm and self.llm_provider:
+                decision = self.llm_provider.analyze_market(context)
+                if decision:
+                    action = decision.get('decision', 'SKIP')
+                    confidence = decision.get('confidence', 0.0)
+                    stake_factor = decision.get('stake_factor', 0.0)
+
+                    print(f"    🤖 LLM Decision: {action} (confidence: {confidence:.2f}, stake: {stake_factor:.2f})")
+
+                    # Place bet if conditions are met
+                    if action in ['YES', 'NO'] and confidence >= 0.6 and stake_factor > 0:
+                        self._place_realtime_bet(market_id, action, stake_factor, yes_price, no_price)
+
+        except Exception as e:
+            print(f"Error in real-time market analysis: {e}")
+
+    def _extract_crypto_from_market(self, market: Dict) -> Optional[str]:
+        """Extract crypto symbol from market data"""
+        question = market.get('question', '').lower()
+        slug = market.get('slug', '').lower()
+
+        # Check for common crypto symbols
+        cryptos = ['bitcoin', 'btc', 'ethereum', 'eth', 'xrp', 'ripple', 'sol', 'solana']
+        for crypto in cryptos:
+            if crypto in question or crypto in slug:
+                # Map to Chainlink symbols
+                mapping = {
+                    'bitcoin': 'bitcoin',
+                    'btc': 'bitcoin',
+                    'ethereum': 'ethereum',
+                    'eth': 'ethereum',
+                    'xrp': 'xrp',
+                    'ripple': 'xrp',
+                    'sol': 'solana',
+                    'solana': 'solana'
+                }
+                return mapping.get(crypto, crypto)
+
+        return None
+
+    def _place_realtime_bet(self, market_id: str, outcome: str, stake_factor: float, yes_price: float, no_price: float):
+        """Place a real-time bet based on analysis"""
+        try:
+            # Determine market direction
+            if outcome == 'YES':
+                market_direction = MarketDirection.YES
+                price = yes_price
+            elif outcome == 'NO':
+                market_direction = MarketDirection.NO
+                price = no_price
+            else:
+                return
+
+            # Calculate position size
+            base_amount = min(500.0, float(self.portfolio.current_balance) * 0.05)  # Max 5% of balance
+            bet_amount = base_amount * stake_factor
+
+            if bet_amount < 10:  # Minimum bet
+                print(f"    💸 Bet amount too small: ${bet_amount:.2f}")
+                return
+
+            # Calculate quantity
+            quantity = bet_amount / price
+
+            print(f"    📈 Placing real-time {outcome} bet: ${bet_amount:.2f} @ ${price:.4f} (qty: {quantity:.2f})")
+
+            # Use enhanced order executor for better execution
+            if self.enhanced_order_executor:
+                trade_result = self.enhanced_order_executor.place_buy_order(
+                    market_id=market_id,
+                    outcome=market_direction,
+                    quantity=quantity,
+                    max_price=price * 1.05  # Allow 5% slippage
+                )
+
+                if trade_result:
+                    print("    ✅ Real-time bet placed successfully!")
+                else:
+                    print("    ❌ Failed to place real-time bet")
+
+        except Exception as e:
+            print(f"Error placing real-time bet: {e}")
+
+    def _find_market_for_token(self, token_id: str) -> Optional[str]:
+        """Find market_id for a given token_id"""
+        # This would need implementation to map tokens back to markets
+        # For now, return None
+        return None
+
+    def _place_arbitrage_bet(self, market_id: str, arbitrage_info: Dict):
+        """Place an arbitrage bet"""
+        # Implementation for placing arbitrage bets
+        pass
+
+    def _start_websocket_async(self):
+        """Start WebSocket connection in async context"""
+        try:
+            asyncio.run(self._websocket_main())
+        except Exception as e:
+            print(f"WebSocket thread error: {e}")
+
+    async def _websocket_main(self):
+        """Main WebSocket connection and monitoring loop"""
+        while self.is_monitoring:
+            try:
+                # Connect to WebSocket
+                connected = await self.websocket_client.connect()
+                if not connected:
+                    print("Failed to connect to WebSocket, retrying in 30s...")
+                    await asyncio.sleep(30)
+                    continue
+
+                # Subscribe to crypto markets
+                await self.websocket_client.subscribe_all_crypto_markets()
+
+                # Start listening
+                await self.websocket_client.listen()
+
+            except Exception as e:
+                print(f"WebSocket connection lost: {e}. Reconnecting in 10s...")
+                await asyncio.sleep(10)
+
     
     def start_monitoring(self, check_interval_seconds: int = 900):
         """
@@ -73,17 +375,34 @@ class MarketMonitor:
         if self.is_monitoring:
             print("Monitoring is already running")
             return
-        
+
         self.check_interval = check_interval_seconds
         self.is_monitoring = True
+
+        # Start WebSocket if enabled
+        if self.enable_websocket and self.websocket_client:
+            # Start WebSocket in background thread
+            self.websocket_thread = threading.Thread(target=self._start_websocket_async, daemon=True)
+            self.websocket_thread.start()
+            print("🔗 WebSocket real-time monitoring started")
+
+        # Start monitoring thread
         # Changed from daemon=True to daemon=False to keep main process alive
         self.monitor_thread = threading.Thread(target=self._monitor_loop, daemon=False)
         self.monitor_thread.start()
-        print(f"Started market monitoring. Checking every {check_interval_seconds} seconds.")
+
+        mode = "Real-Time + Periodic" if self.enable_websocket else f"Periodic ({check_interval_seconds}s)"
+        print(f"Started market monitoring in {mode} mode.")
     
     def stop_monitoring(self):
         """Stop the monitoring loop"""
         self.is_monitoring = False
+
+        # Stop WebSocket client
+        if self.websocket_client:
+            asyncio.run(self.websocket_client.disconnect())
+            print("🔌 WebSocket monitoring stopped")
+
         if self.monitor_thread:
             self.monitor_thread.join(timeout=2)  # Wait up to 2 seconds for thread to finish
         print("Stopped market monitoring.")

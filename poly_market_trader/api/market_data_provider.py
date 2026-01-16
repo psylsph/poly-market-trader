@@ -245,6 +245,43 @@ class MarketDataProvider:
         # If 15M markets requested, use the new method
         if use_15m_only:
             return self.get_crypto_up_down_markets(limit)
-        
+
         # For non-15m, return empty list (not used in main app)
         return []
+
+    def get_crypto_asset_ids(self, limit: int = 100) -> List[str]:
+        """
+        Get asset IDs (token IDs) for crypto up/down markets (15M, 1H, 4H)
+        Used for WebSocket subscriptions
+        :param limit: Number of markets to scan
+        :return: List of asset IDs (token IDs)
+        """
+        crypto_markets = self.get_crypto_up_down_markets(limit)
+        asset_ids = []
+
+        for market in crypto_markets:
+            # Extract clobTokenIds (contains YES and NO token IDs)
+            clob_token_ids_raw = market.get('clobTokenIds', '[]')
+            try:
+                if isinstance(clob_token_ids_raw, str):
+                    clob_token_ids = json.loads(clob_token_ids_raw)
+                else:
+                    clob_token_ids = clob_token_ids_raw
+
+                if isinstance(clob_token_ids, list) and len(clob_token_ids) >= 2:
+                    # Add both YES and NO token IDs
+                    asset_ids.extend(clob_token_ids[:2])
+            except (json.JSONDecodeError, TypeError) as e:
+                print(f"Error parsing clobTokenIds for market {market.get('id', 'unknown')}: {e}")
+                continue
+
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_asset_ids = []
+        for asset_id in asset_ids:
+            if asset_id not in seen:
+                seen.add(asset_id)
+                unique_asset_ids.append(asset_id)
+
+        print(f"Found {len(unique_asset_ids)} unique asset IDs for WebSocket subscription")
+        return unique_asset_ids

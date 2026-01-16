@@ -79,23 +79,8 @@ class PolymarketWebSocketClient:
         from poly_market_trader.api.market_data_provider import MarketDataProvider
 
         market_data = MarketDataProvider()
-        markets = market_data.get_short_term_crypto_markets(limit=150)
-        
-        # Get token IDs from markets
-        token_ids = []
-        for m in markets:
-            clob_token_ids_raw = m.get('clobTokenIds', '[]')
-            try:
-                if isinstance(clob_token_ids_raw, str):
-                    clob_token_ids = json.loads(clob_token_ids_raw)
-                else:
-                    clob_token_ids = clob_token_ids_raw
-                if len(clob_token_ids) >= 2:
-                    token_ids.append(clob_token_ids[0])  # YES token
-                    token_ids.append(clob_token_ids[1])  # NO token
-            except:
-                pass
-        
+        token_ids = market_data.get_crypto_asset_ids(limit=200)  # Get up to 200 asset IDs
+
         if token_ids:
             return await self.subscribe_markets(token_ids)
         return False
