@@ -522,12 +522,13 @@ class PaperTrader:
 
         return analysis
 
-    def start_auto_betting(self, check_interval_seconds: int = 900):
+    def start_auto_betting(self, check_interval_seconds: int = 900, confidence_threshold: float = None):
         """
         Start the auto-betting loop that monitors markets and places bets based on Chainlink analysis
         :param check_interval_seconds: How often to check for new opportunities (default 15 min = 900 sec)
+        :param confidence_threshold: Minimum confidence level
         """
-        self.market_monitor.start_monitoring(check_interval_seconds)
+        self.market_monitor.start_monitoring(check_interval_seconds, confidence_threshold)
 
     def stop_auto_betting(self):
         """Stop the auto-betting loop"""

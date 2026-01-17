@@ -46,6 +46,8 @@ class Portfolio:
 
         for position in self.positions:
             market_data = market_prices.get(position.market_id)
+            current_price = position.avg_price  # Default to cost basis
+
             if market_data:
                 # market_data can be in different formats depending on where it comes from
                 # Format 1: {"yes": {"price": 0.6}, "no": {"price": 0.4}}
@@ -56,49 +58,18 @@ class Portfolio:
                     outcome_data = market_data[outcome_key]
                     if isinstance(outcome_data, dict) and 'price' in outcome_data:
                         # Format 1: {"yes": {"price": 0.6}}
-                        current_price = outcome_data['price']
+                        current_price = float(outcome_data['price'])
                     elif isinstance(outcome_data, (int, float)):
                         # Format 2: {"yes": 0.6}
-                        current_price = outcome_data
-                    else:
-                        # Fallback to avg_price if format is unexpected
-                        current_price = position.avg_price
-                else:
-                    # Fallback to avg_price if outcome not found
-                    current_price = position.avg_price
-
-                total += Decimal(str(position.quantity * current_price))
+                        current_price = float(outcome_data)
+            
+            # Add position value to total
+            total += Decimal(str(position.quantity * current_price))
 
         return total
 
     def get_pnl(self, market_prices: Dict[str, Dict]) -> Decimal:
-        """Calculate total profit and loss"""
-        total_pnl = Decimal('0')
-
-        for position in self.positions:
-            market_data = market_prices.get(position.market_id)
-            if market_data:
-                # market_data can be in different formats depending on where it comes from
-                # Format 1: {"yes": {"price": 0.6}, "no": {"price": 0.4}}
-                # Format 2: {"yes": 0.6, "no": 0.4}
-                outcome_key = position.outcome.value.lower()
-
-                if outcome_key in market_data:
-                    outcome_data = market_data[outcome_key]
-                    if isinstance(outcome_data, dict) and 'price' in outcome_data:
-                        # Format 1: {"yes": {"price": 0.6}}
-                        current_price = outcome_data['price']
-                    elif isinstance(outcome_data, (int, float)):
-                        # Format 2: {"yes": 0.6}
-                        current_price = outcome_data
-                    else:
-                        # Fallback to avg_price if format is unexpected
-                        current_price = position.avg_price
-                else:
-                    # Fallback to avg_price if outcome not found
-                    current_price = position.avg_price
-
-                position_pnl = Decimal(str(position.quantity)) * (Decimal(str(current_price)) - Decimal(str(position.avg_price)))
-                total_pnl += position_pnl
-
-        return total_pnl
+        """Calculate total profit and loss (Realized + Unrealized)"""
+        # P&L = Current Total Value - Initial Balance
+        total_value = self.get_total_value(market_prices)
+        return total_value - self.initial_balance

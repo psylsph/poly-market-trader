@@ -430,7 +430,7 @@ class TraderService:
     def start_auto_betting(self, interval_seconds: int = 900, confidence_threshold: float = 0.6) -> Dict[str, Any]:
         """Start auto-betting loop."""
         try:
-            self.trader.start_auto_betting(check_interval_seconds=interval_seconds)
+            self.trader.start_auto_betting(check_interval_seconds=interval_seconds, confidence_threshold=confidence_threshold)
             return {
                 'success': True,
                 'message': f'Auto-betting started (interval: {interval_seconds}s, threshold: {confidence_threshold})',

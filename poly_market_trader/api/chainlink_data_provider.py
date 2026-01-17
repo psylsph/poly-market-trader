@@ -6,6 +6,7 @@ import os
 import time
 import pandas as pd
 import numpy as np
+from functools import lru_cache
 from ..config.settings import DEFAULT_INITIAL_BALANCE
 
 
@@ -17,9 +18,21 @@ class ChainlinkDataProvider:
 
     PRIMARY: Binance API (free, 1200 requests/minute)
     FALLBACK: CoinGecko API (requires API key, no free tier)
+
+    PERFORMANCE FEATURES:
+    - In-memory caching for technical indicators (5-minute TTL)
+    - LRU cache for price data to reduce API calls
     """
 
     def __init__(self):
+        # PERFORMANCE: Caching layer for improved speed
+        # Cache for technical indicators (symbol -> {timestamp, data})
+        self._tech_cache: Dict[str, Dict] = {}
+        self._cache_ttl = 300  # 5 minutes TTL for technical indicators
+
+        # LRU cache for price data to reduce API calls
+        self._price_cache: Dict[str, Tuple[List, float]] = {}
+        self._price_cache_ttl = 60  # 1 minute TTL for price data
         # Binance API - FREE tier, no API key required
         # https://binance-docs.github.io/apidocs/spot/en/#market-data-endpoints
         self.binance_api = "https://api.binance.com/api/v3"
@@ -678,14 +691,40 @@ class ChainlinkDataProvider:
     def get_technical_indicators(self, crypto_name: str, timeframe: str = '15min') -> Dict[str, float]:
         """
         Calculate technical indicators for a cryptocurrency
+        Uses caching to improve performance (5-minute TTL)
+
         :param crypto_name: Name of the cryptocurrency
         :param timeframe: Timeframe for analysis ('15min', '1hour', '1day')
         :return: Dictionary with indicators
         """
+        # Check cache first
+        cache_key = f"{crypto_name}_{timeframe}"
+        current_time = time.time()
+
+        if cache_key in self._tech_cache:
+            cached_data = self._tech_cache[cache_key]
+            if current_time - cached_data['timestamp'] < self._cache_ttl:
+                return cached_data['indicators'].copy()  # Return copy to prevent modification
+
+        # Cache miss - calculate indicators
+        indicators = self._calculate_technical_indicators(crypto_name, timeframe)
+
+        # Store in cache
+        self._tech_cache[cache_key] = {
+            'timestamp': current_time,
+            'indicators': indicators.copy()
+        }
+
+        return indicators
+
+    def _calculate_technical_indicators(self, crypto_name: str, timeframe: str = '15min') -> Dict[str, float]:
+        """
+        Internal method to calculate technical indicators (not cached)
+        """
         hours = 1  # Default to 1 hour
         interval = '15m'
         rsi_period = 14
-        
+
         if timeframe == '15min':
             hours = 8  # Need 8 hours for 14-period RSI on 15m candles (32 points)
             interval = '15m'

@@ -24,6 +24,7 @@ class MarketContext:
     tags: Optional[list] = None
     technicals: Optional[Dict] = None
     balance: float = 0.0
+    recent_performance: Optional[Dict] = None  # New field for performance stats
 
 class LLMProvider:
     """
@@ -35,8 +36,10 @@ class LLMProvider:
         self.base_url = base_url or os.getenv('LLM_BASE_URL', settings.LLM_BASE_URL)
         self.api_key = api_key or os.getenv('LLM_API_KEY', settings.LLM_API_KEY)
         self.client = OpenAI(base_url=self.base_url, api_key=self.api_key)
-        #self.default_model = LLMModel.NANO.value # Default to nano model for faster responses
-        self.default_model = LLMModel.REASONING.value
+        # Try different models - some may be better at structured outputs
+        # self.default_model = LLMModel.NANO.value
+        # self.default_model = LLMModel.REASONING.value
+        self.default_model = "mistralai/ministral-3-14b-reasoning"  # Try a different model that might be better at JSON
 
         
     def _get_system_prompt(self, context: MarketContext) -> str:
@@ -44,51 +47,38 @@ class LLMProvider:
         tags_str = ', '.join(context.tags) if context.tags else 'None'
         tech_str = json.dumps(context.technicals, indent=2) if context.technicals else 'None'
         
-        return f"""You are an expert financial analyst for Polymarket, a crypto-based prediction market. 
-Your goal is to extract structured data AND provide a trading recommendation based on technical and fundamental analysis.
+        perf_context = ""
+        if context.recent_performance:
+            losses = context.recent_performance.get('consecutive_losses', 0)
+            if losses > 0:
+                last_outcome = context.recent_performance.get('last_outcome')
+                actual = context.recent_performance.get('last_actual')
+                perf_context = f"\nWARNING: You have LOST the last {losses} bets on this asset. Last bet: {last_outcome}, Result: {actual}. BE EXTRA CAUTIOUS."
+            elif context.recent_performance.get('win_rate', 0) < 0.4 and context.recent_performance.get('losses', 0) > 2:
+                perf_context = f"\nWARNING: Low win rate ({context.recent_performance.get('win_rate', 0):.2%}) on this asset. Review past errors."
 
-POLYMARKET MECHANICS:
-- Binary System: Users buy/sell shares of "Yes" or "No".
-- Payouts: Correct shares redeem for $1.00. Incorrect shares are worth $0.00.
-- Price as Probability: A price of $0.75 means the market assigns a 75% probability.
-- Trading: This is a live market. You can sell before the event concludes to lock in profits if the price moves in your favor.
+        prompt = """{question}
+Prices: YES=${yes_price:.2f}, NO=${no_price:.2f}
+{perf_context}
 
-CONTEXT:
-- Market Question: "{context.question}"
-- Market Description: "{context.description}"
-- Current Prices: YES=${context.yes_price:.2f}, NO=${context.no_price:.2f}
-- Volume: ${context.volume:,.2f}
-- Tags: {tags_str}
-- Current Portfolio Balance: ${context.balance:,.2f}
-- Technical Indicators (Chainlink):
-{tech_str}
+Analyze the technical indicators: {technicals}
 
-TASK:
-Analyze the market and provide a JSON response with the following fields:
-1. "asset": The primary asset (e.g., "Bitcoin").
-2. "decision": Your trading recommendation ("YES", "NO", "BOTH", or "SKIP").
-3. "confidence": A score from 0.0 to 1.0 indicating your conviction.
-4. "stake_factor": A multiplier (0.0 to 1.5) for the standard bet size. Use 0.0 for SKIP.
-5. "reasoning": A brief explanation of your decision, citing technicals or market sentiment.
+Based on the question and technicals, decide YES, NO, or SKIP.
+Return ONLY a JSON object with these exact fields:
+- asset: the cryptocurrency name from the question
+- decision: "YES", "NO", or "SKIP"
+- confidence: number 0.0 to 1.0
+- stake_factor: number 0.0 to 1.5
+- reasoning: brief explanation
 
-STRATEGY GUIDELINES:
-- **Arbitrage**: If (YES Price + NO Price) <= 0.99, this is free money. Decision MUST be "BOTH" and stake_factor 1.5.
-- **Trend Strength (ADX)**: If ADX > 25, the trend is STRONG.
-    - **Bullish Trend (Up) + ADX > 25**: BET WITH TREND (YES). Do NOT bet NO even if RSI > 70.
-    - **Bearish Trend (Down) + ADX > 25**: BET WITH TREND (NO). Do NOT bet YES even if RSI < 30.
-- **Mean Reversion**: ONLY valid if ADX < 25 (Weak Trend).
-    - If ADX < 25 and RSI > 70 (Overbought) -> Bet NO.
-    - If ADX < 25 and RSI < 30 (Oversold) -> Bet YES.
-- **Bollinger Bands**:
-    - Price > Upper Band: Overbought (bearish signal).
-    - Price < Lower Band: Oversold (bullish signal).
-- **Value**: If your confidence > market price, it's a value bet.
-- **Stake Sizing**: Higher confidence = higher stake_factor. Max 1.5x for high conviction (>0.8).
-
-CRITICAL INSTRUCTIONS:
-- You must return ONLY valid JSON.
-- Do not include markdown formatting like ```json ... ```.
-"""
+Example: {{"asset": "Bitcoin", "decision": "YES", "confidence": 0.8, "stake_factor": 1.0, "reasoning": "Strong uptrend"}}""".format(
+            question=context.question,
+            yes_price=context.yes_price,
+            no_price=context.no_price,
+            perf_context=perf_context,
+            technicals=tech_str
+        )
+        return prompt
 
     def analyze_market(self, context: MarketContext, model: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
@@ -104,7 +94,7 @@ CRITICAL INSTRUCTIONS:
         target_model = model or self.default_model
 
         try:
-            logger.info(f"Sending market analysis request to LLM ({target_model})...")
+            logger.info(f"Sending market analysis request to LLM ({target_model}) - expecting pure JSON response...")
 
             response = self.client.chat.completions.create(
                 model=target_model,
@@ -112,7 +102,9 @@ CRITICAL INSTRUCTIONS:
                     {"role": "system", "content": self._get_system_prompt(context)},
                     {"role": "user", "content": "Extract the structured data for this market."}
                 ],
-                temperature=0.1, # Low temperature for deterministic output
+                temperature=0.4,  # Higher temperature to encourage confidence variation
+                stream=False,     # Disable streaming to ensure complete responses
+                max_tokens=500,   # Limit response length to prevent truncation
             )
 
             raw_content = response.choices[0].message.content
@@ -133,25 +125,107 @@ CRITICAL INSTRUCTIONS:
                 logger.error("LLM returned only whitespace")
                 return self._get_default_response("Only whitespace from LLM")
 
-            # Check if content starts with valid JSON characters
+            # Check for </think> tag pattern - content after this tag should be the actual response
+            think_end_tag = "</think>"
+            if think_end_tag in content:
+                think_end_pos = content.find(think_end_tag) + len(think_end_tag)
+                json_content = content[think_end_pos:].strip()
+
+                if json_content:
+                    logger.info(f"Found </think> tag, using content after it: {repr(json_content[:100])}")
+                    # Try to parse the content after </think>
+                    try:
+                        data = json.loads(json_content)
+                        logger.info("Successfully parsed JSON after </think> tag")
+                        return data
+                    except json.JSONDecodeError:
+                        logger.debug(f"Direct parse after </think> failed, trying extraction")
+
+                        # If direct parse fails, try aggressive extraction on the post-think content
+                        json_content = json_content
+
+            # AGGRESSIVE JSON EXTRACTION: If response doesn't start with JSON, find JSON anywhere in it
             if not content.startswith(('{', '[', '"', 't', 'f', 'n', '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9')):
-                logger.warning(f"LLM response doesn't start with valid JSON token. First 100 chars: {repr(content[:100])}")
+                # It's common for LLMs to wrap JSON in markdown or add text, so this is an INFO level event, not a warning
+                logger.info(f"LLM response doesn't start with valid JSON token (likely markdown/text). extracting...")
+                logger.debug(f"First 100 chars: {repr(content[:100])}")
 
-                # Special handling for markdown-wrapped JSON
-                if content.strip().startswith('```'):
-                    import re
-                    # Try to extract JSON from markdown code blocks immediately
-                    markdown_match = re.search(r'```(?:json)?\s*\n?(\{[\s\S]*?\})\s*\n?```', content, re.DOTALL)
-                    if markdown_match:
+                # STRATEGY 1: Find ALL potential JSON objects and try them
+                json_candidates = []
+                i = 0
+                while i < len(content):
+                    if content[i] == '{':
+                        # Found potential JSON start
+                        brace_count = 0
+                        start_pos = i
+                        for j in range(i, len(content)):
+                            if content[j] == '{':
+                                brace_count += 1
+                            elif content[j] == '}':
+                                brace_count -= 1
+                                if brace_count == 0:
+                                    # Found complete JSON object
+                                    json_candidate = content[start_pos:j+1]
+                                    json_candidates.append(json_candidate)
+                                    i = j + 1
+                                    break
+                        else:
+                            i += 1
+                    else:
+                        i += 1
+
+                # Try parsing each candidate, starting with the longest (most complete)
+                json_candidates.sort(key=len, reverse=True)
+                for candidate in json_candidates:
+                    try:
+                        data = json.loads(candidate)
+                        logger.info(f"Successfully extracted JSON from response (length: {len(candidate)})")
+                        return data
+                    except json.JSONDecodeError:
+                        continue
+
+                # STRATEGY 2: Handle incomplete JSON (missing closing braces)
+                if json_candidates:
+                    # Try the longest incomplete candidate and add missing braces
+                    longest_candidate = max(json_candidates, key=len)
+                    missing_braces = longest_candidate.count('{') - longest_candidate.count('}')
+                    if missing_braces > 0:
+                        completed_candidate = longest_candidate + '}' * missing_braces
                         try:
-                            json_str = markdown_match.group(1)
-                            data = json.loads(json_str)
-                            logger.info("Successfully parsed JSON from markdown code block")
+                            data = json.loads(completed_candidate)
+                            logger.info(f"Successfully parsed JSON by adding {missing_braces} missing braces")
                             return data
-                        except json.JSONDecodeError as e:
-                            logger.debug(f"Markdown JSON parsing failed: {e}")
+                        except json.JSONDecodeError:
+                            pass
 
-                # Try multiple strategies to extract JSON from explanatory text
+                # STRATEGY 3: Try to extract from markdown code blocks
+                import re
+                markdown_patterns = [
+                    r'```(?:json)?\s*\n?(\{[\s\S]*?)\n?```',  # Complete markdown blocks
+                    r'```(?:json)?\s*\n?(\{[\s\S]*)',  # Incomplete markdown blocks
+                ]
+
+                for pattern in markdown_patterns:
+                    matches = re.findall(pattern, content, re.DOTALL)
+                    for match in matches:
+                        # Try direct parsing
+                        try:
+                            data = json.loads(match)
+                            logger.info("Successfully parsed JSON from markdown block")
+                            return data
+                        except json.JSONDecodeError:
+                            # Try completing incomplete JSON
+                            completed_match = self._complete_incomplete_json(match)
+                            if completed_match:
+                                try:
+                                    data = json.loads(completed_match)
+                                    logger.info("Successfully parsed completed markdown JSON")
+                                    return data
+                                except json.JSONDecodeError:
+                                    continue
+
+                logger.error("Could not extract any valid JSON from LLM response")
+                return self._get_default_response("No valid JSON found in LLM response")
 
                 import re
 
@@ -221,6 +295,33 @@ CRITICAL INSTRUCTIONS:
                     return constructed_response
 
             logger.debug(f"LLM Response (length: {len(content)}): {content[:500]}{'...' if len(content) > 500 else ''}")
+
+            # AGGRESSIVE CHECK: Reject responses that contain thinking/chain-of-thought text
+            thinking_indicators = [
+                "we need to output", "must follow", "json with fields",
+                "your response must be", "return only json",
+                "let me analyze", "i think", "the analysis shows",
+                "based on", "therefore", "so ", "thus",
+                "first", "second", "finally", "in conclusion",
+                "step", "approach", "method", "strategy"
+            ]
+
+            content_lower = content.strip().lower()
+            if any(indicator in content_lower for indicator in thinking_indicators):
+                logger.warning(f"LLM returned thinking/chain-of-thought text: {repr(content[:300])}")
+
+                # Try to extract JSON from the response by finding the last { that leads to valid JSON
+                last_brace_pos = content.rfind('{')
+                if last_brace_pos >= 0:
+                    potential_json = content[last_brace_pos:]
+                    try:
+                        data = json.loads(potential_json)
+                        logger.info("Successfully extracted JSON from thinking response")
+                        return data
+                    except json.JSONDecodeError:
+                        pass
+
+                return self._get_default_response("LLM returned thinking text instead of JSON")
 
             # Parse JSON with multiple fallback strategies
             try:
@@ -414,6 +515,147 @@ CRITICAL INSTRUCTIONS:
             "stake_factor": stake_factor,
             "reasoning": reasoning
         }
+
+    def _complete_incomplete_json(self, json_str: str) -> Optional[str]:
+        """Try to complete incomplete JSON by adding missing elements."""
+        import re
+        original_str = json_str
+        json_str = json_str.strip()
+
+        # If it ends with a complete object, add missing fields if needed
+        if json_str.endswith('}'):
+            try:
+                data = json.loads(json_str)
+                # Check for missing required fields
+                required_fields = ['asset', 'decision', 'confidence', 'stake_factor', 'reasoning']
+                missing_fields = [field for field in required_fields if field not in data]
+
+                if missing_fields:
+                    # Add missing fields with defaults
+                    for field in missing_fields:
+                        if field == 'asset':
+                            data[field] = 'unknown'
+                        elif field == 'decision':
+                            data[field] = 'SKIP'
+                        elif field == 'confidence':
+                            data[field] = 0.5
+                        elif field == 'stake_factor':
+                            data[field] = 0.5
+                        elif field == 'reasoning':
+                            data[field] = 'JSON was incomplete'
+
+                    # Re-serialize
+                    json_str = json.dumps(data, indent=2)
+                return json_str
+            except json.JSONDecodeError:
+                pass  # Continue with completion logic
+
+        # Check for truncated string values (unclosed quotes)
+        # Count effective quotes (escaped quotes count as one)
+        open_quotes = json_str.count('"') - json_str.count('\\"')
+        if open_quotes % 2 == 1:  # Odd number means unclosed quote
+            logger.debug("Detected unclosed string quote, attempting to close it")
+            # Find the last quote and add closing quote and completion
+            last_quote_pos = json_str.rfind('"')
+            if last_quote_pos >= 0:
+                # Check what comes after the last quote
+                after_quote = json_str[last_quote_pos + 1:].strip()
+                if not after_quote or after_quote.startswith(','):
+                    # Unclosed field value - close it and add reasoning
+                    json_str = json_str + '", "reasoning": "JSON was truncated"}'
+                else:
+                    # Might be unclosed field name - complete differently
+                    json_str = json_str + '": "unknown", "reasoning": "JSON was truncated"}'
+
+        # Fix trailing commas before closing braces
+        json_str = re.sub(r',(\s*})', r'\1', json_str)
+
+        # Add missing closing braces
+        missing_braces = json_str.count('{') - json_str.count('}')
+        if missing_braces > 0:
+            json_str = json_str + '}' * missing_braces
+
+        # Try to parse and add missing fields
+        try:
+            data = json.loads(json_str)
+            # Check for missing required fields
+            required_fields = ['asset', 'decision', 'confidence', 'stake_factor', 'reasoning']
+            missing_fields = [field for field in required_fields if field not in data]
+
+            if missing_fields:
+                # Add missing fields with defaults
+                for field in missing_fields:
+                    if field == 'asset':
+                        data[field] = 'unknown'
+                    elif field == 'decision':
+                        data[field] = 'SKIP'
+                    elif field == 'confidence':
+                        data[field] = 0.5
+                    elif field == 'stake_factor':
+                        data[field] = 0.5
+                    elif field == 'reasoning':
+                        data[field] = 'JSON was incomplete'
+
+                # Re-serialize
+                json_str = json.dumps(data, indent=2)
+
+        except json.JSONDecodeError as e:
+            logger.debug(f"JSON completion parsing failed: {e}, trying advanced completion")
+
+            # Advanced completion: handle specific truncation patterns from logs
+            original_json = json_str  # Save original for debugging
+            try:
+
+                # Pattern 1: Ends with incomplete "reas" (reasoning field)
+                if json_str.strip().endswith('"reas'):
+                    json_str = json_str + 'oning": "JSON was truncated"}'
+
+                # Pattern 2: Ends with comma after complete field (like "stake_factor": 1.2, )
+                elif json_str.strip().endswith(','):
+                    json_str = json_str[:-1] + ', "reasoning": "JSON was truncated"}'
+
+                # Pattern 3: Ends with quote in field position (like after "stake_factor": 1.2, ")
+                elif json_str.strip().endswith('"') and not json_str.endswith('"}'):
+                    # Check if it's after a field value or field name
+                    last_colon = json_str.rfind(':')
+                    if last_colon > 0:
+                        # It's after a field value, add reasoning
+                        json_str = json_str + ': "unknown", "reasoning": "JSON was truncated"}'
+                    else:
+                        # It's a field name, complete it
+                        json_str = json_str + ': "unknown", "reasoning": "JSON was truncated"}'
+
+                # Pattern 4: Missing closing brace but has complete fields
+                elif json_str.count('{') > json_str.count('}'):
+                    # Check if it has all required fields before adding reasoning
+                    try:
+                        temp_data = json.loads(json_str + '}')
+                        required_fields = ['asset', 'decision', 'confidence', 'stake_factor']
+                        has_required = all(field in temp_data for field in required_fields)
+                        if has_required and 'reasoning' not in temp_data:
+                            json_str = json_str + ', "reasoning": "JSON was truncated"}'
+                        else:
+                            json_str = json_str + '}'
+                    except:
+                        json_str = json_str + ', "reasoning": "JSON was truncated"}'
+
+                # Try parsing the completed JSON
+                data = json.loads(json_str)
+                required_fields = ['asset', 'decision', 'confidence', 'stake_factor', 'reasoning']
+                missing_fields = [field for field in required_fields if field not in data]
+
+                if missing_fields:
+                    for field in missing_fields:
+                        if field == 'reasoning':
+                            data[field] = 'JSON was truncated'
+                    json_str = json.dumps(data, indent=2)
+
+            except json.JSONDecodeError as e2:
+                logger.debug(f"Advanced completion failed: {e2}, original: {repr(original_json)}")
+                # Last resort: create a minimal valid JSON
+                json_str = '{"asset": "unknown", "decision": "SKIP", "confidence": 0.0, "stake_factor": 0.0, "reasoning": "Parsing failed"}'
+
+        return json_str
 
     def _get_default_response(self, reason: str) -> Dict[str, Any]:
         """Return a safe default response to prevent crashes."""

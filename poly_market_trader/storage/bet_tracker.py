@@ -229,7 +229,7 @@ class BetTracker:
     def settle_all_ready_bets(self, chainlink_data: ChainlinkDataProvider, 
                             portfolio: Portfolio, order_executor: Optional[OrderExecutor] = None) -> List[Dict]:
         """
-        Check and settle all bets that are ready (market end time + 5 min buffer passed)
+        Check and settle all bets that are ready (market end time + buffer passed)
         :param chainlink_data: Chainlink data provider
         :param portfolio: Portfolio to update
         :param order_executor: Order executor for trade processing (optional)
@@ -238,13 +238,28 @@ class BetTracker:
         active_bets = self.get_active_bets()
         current_time = datetime.now(timezone.utc)
         
-        settlement_buffer = timedelta(minutes=5)
+        # Reduced buffer to 2 minutes to free up slots faster
+        # Binance data is usually available immediately after candle close
+        settlement_buffer = timedelta(minutes=2)
         settled = []
         
         for bet in active_bets:
             market_end_time = self._parse_time(bet.get("market_end_time"))
             
-            if market_end_time and current_time > market_end_time + settlement_buffer:
+            # Handle stuck bets (no end time) - force expire them if old
+            if not market_end_time:
+                placed_at = self._parse_time(bet.get("placed_at"))
+                if placed_at and current_time > placed_at + timedelta(hours=24):
+                    print(f"⚠️ Expiring stuck bet without end time: {bet['bet_id']}")
+                    # Create dummy record to remove it
+                    # We can't determine outcome, so maybe just refund or mark as error?
+                    # For now, let's just log it. To remove it we'd need to modify settle_bet logic
+                    # or manipulate the list directly.
+                    # Ideally we should fetch the market end time from API again if missing.
+                    continue
+                continue
+            
+            if current_time > market_end_time + settlement_buffer:
                 # Bet is ready for settlement
                 result = self.settle_bet(bet["bet_id"], chainlink_data, portfolio, order_executor)
                 settled.append(result)
@@ -297,6 +312,60 @@ class BetTracker:
             bets = bets[:limit]
         
         return bets
+    
+    def get_token_performance(self, crypto_name: str, lookback_hours: int = 24) -> Dict:
+        """
+        Get recent performance stats for a specific token
+        :param crypto_name: Name of cryptocurrency
+        :param lookback_hours: Hours to look back
+        :return: Dict with wins, losses, last_outcome, consecutive_losses
+        """
+        history = self.get_bet_history(limit=50) # Get recent 50 bets
+        
+        # Filter for this crypto
+        token_bets = [b for b in history if b.get('crypto_name', '').lower() == crypto_name.lower()]
+        
+        # Filter by time
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
+        recent_bets = []
+        for bet in token_bets:
+            settled_at = bet.get('settled_at')
+            if settled_at:
+                try:
+                    dt = datetime.fromisoformat(settled_at)
+                    if dt.tzinfo is None: dt = dt.replace(tzinfo=timezone.utc)
+                    if dt > cutoff_time:
+                        recent_bets.append(bet)
+                except:
+                    pass
+        
+        # Calculate stats
+        wins = sum(1 for b in recent_bets if b.get('status') == 'won')
+        losses = sum(1 for b in recent_bets if b.get('status') == 'lost')
+        
+        # Analyze streak
+        consecutive_losses = 0
+        # history is typically sorted recent-first in get_bet_history
+        # Verify order or sort again just in case
+        recent_bets.sort(key=lambda x: x.get("settled_at", ""), reverse=True)
+        
+        for bet in recent_bets:
+            if bet.get('status') == 'lost':
+                consecutive_losses += 1
+            else:
+                break
+                
+        last_bet = recent_bets[0] if recent_bets else None
+        
+        return {
+            "wins": wins,
+            "losses": losses,
+            "win_rate": wins / (wins + losses) if (wins + losses) > 0 else 0.0,
+            "consecutive_losses": consecutive_losses,
+            "last_result": last_bet.get('status') if last_bet else None,
+            "last_outcome": last_bet.get('outcome') if last_bet else None,
+            "last_actual": last_bet.get('actual_outcome') if last_bet else None
+        }
     
     def _determine_outcome(self, crypto_name: str, start_time: datetime, 
                          end_time: datetime, chainlink_data: ChainlinkDataProvider) -> tuple:

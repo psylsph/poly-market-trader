@@ -64,8 +64,8 @@ parser.add_argument('--monitor-status', action='store_true',
                     help='Show auto-betting monitoring status')
 parser.add_argument('--active-bets', action='store_true',
                     help='Show active bets from auto-betting system')
-parser.add_argument('--confidence-threshold', type=float, default=0.6,
-                    help='Minimum confidence level to place auto bet (default: 0.6)')
+parser.add_argument('--confidence-threshold', type=float, default=0.5,
+                    help='Minimum confidence level to place auto bet (default: 0.5)')
 parser.add_argument('--web', action='store_true',
                     help='Start the web GUI server (default port: 8000)')
 parser.add_argument('--web-port', type=int, default=8000,
@@ -101,6 +101,27 @@ def main(args=None):
         print("Resetting portfolio to fresh state...")
         trader.reset_portfolio()
         print("Portfolio has been reset. All data wiped and fresh portfolio created.")
+
+    elif args.web:
+        print(f"Starting web GUI server on port {args.web_port}...")
+
+        # Auto-start betting monitor
+        from poly_market_trader.web.services.trader_service import TraderService
+        print("Auto-starting betting monitor (Interval: 15m)...")
+        service = TraderService()
+        service.start_auto_betting(confidence_threshold=args.confidence_threshold)
+
+        print(f"Open http://localhost:{args.web_port} in your browser")
+        print("Press Ctrl+C to stop the server\n")
+
+        import uvicorn
+        from poly_market_trader.web.api_server import app
+
+        try:
+            uvicorn.run(app, host="0.0.0.0", port=args.web_port)
+        finally:
+            print("Stopping auto-betting...")
+            service.stop_auto_betting()
 
     elif args.settle_bets:
         results = trader.settle_bets()
@@ -223,27 +244,6 @@ def main(args=None):
 
     elif args.portfolio:
         trader.print_portfolio_summary()
-
-    elif args.web:
-        print(f"Starting web GUI server on port {args.web_port}...")
-
-        # Auto-start betting monitor
-        from poly_market_trader.web.services.trader_service import TraderService
-        print("Auto-starting betting monitor (Interval: 15m)...")
-        service = TraderService()
-        service.start_auto_betting(confidence_threshold=args.confidence_threshold)
-
-        print(f"Open http://localhost:{args.web_port} in your browser")
-        print("Press Ctrl+C to stop the server\n")
-
-        import uvicorn
-        from poly_market_trader.web.api_server import app
-
-        try:
-            uvicorn.run(app, host="0.0.0.0", port=args.web_port)
-        finally:
-            print("Stopping auto-betting...")
-            service.stop_auto_betting()
 
     elif args.realtime_monitor:
         print("Starting real-time WebSocket monitoring for arbitrage detection...")
