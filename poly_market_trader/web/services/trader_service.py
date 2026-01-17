@@ -7,7 +7,7 @@ without directly exposing the PaperTrader implementation details.
 
 from decimal import Decimal
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import sys
 from pathlib import Path
 
@@ -132,10 +132,10 @@ class TraderService:
         except Exception as e:
             return {'success': False, 'error': str(e)}
     
-    def get_bet_history(self, limit: int = 50, status_filter: str = None) -> Dict[str, Any]:
+    def get_bet_history(self, limit: int = 50, status_filter: str = None, start_time: datetime = None) -> Dict[str, Any]:
         """Get bet history with optional filtering."""
         try:
-            bets = self.trader.get_bet_history(limit=limit, status_filter=status_filter)
+            bets = self.trader.get_bet_history(limit=limit, status_filter=status_filter, start_time=start_time)
             return {
                 'success': True,
                 'data': {
@@ -367,8 +367,13 @@ class TraderService:
             portfolio = self.get_portfolio_summary()
             positions = self.get_positions()
             active_bets = self.get_active_bets()
-            bet_history = self.get_bet_history(limit=10)
+            
+            # Get last 24h history for dashboard
+            start_time_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+            bet_history = self.get_bet_history(limit=None, start_time=start_time_24h)
+            
             token_stats = self.get_token_statistics()
+            # Increase market limit to show more opportunities
             markets = self.get_markets(limit=100)
             
             # Add settlement status

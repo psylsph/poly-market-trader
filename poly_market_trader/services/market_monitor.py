@@ -1004,8 +1004,8 @@ class MarketMonitor:
                 return
 
             # Check concurrent positions
-            if len(self.active_bets) >= 5:
-                print(f"  Skipping: Maximum concurrent positions reached ({len(self.active_bets)} >= 5)")
+            if len(self.active_bets) >= 10:
+                print(f"  Skipping: Maximum concurrent positions reached ({len(self.active_bets)} >= 10)")
                 return
 
             print(f"  💰 Enhanced Bet Sizing: {adjusted_bet_percent*100:.1f}% of balance")
